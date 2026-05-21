@@ -4,6 +4,7 @@ import android.content.Context
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
+import android.graphics.Path
 import android.graphics.RectF
 import android.view.MotionEvent
 import android.view.SurfaceHolder
@@ -53,7 +54,7 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback 
     private var stageElapsedTimeMs = 0L
 
     private val items = mutableListOf<Item>()
-    private val itemDropProbability = 0.2f 
+    private val itemDropProbability = 0.05f 
 
     private val effects = mutableListOf<Effect>()
     private var invincibleTimer = 0 
@@ -565,12 +566,21 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback 
         canvas.drawText("HP: ", 50f, 80f, paint)
         val hpTextWidth = paint.measureText("HP: ")
         
-        var heartX = 50f + hpTextWidth
+        var heartX = 50f + hpTextWidth + 30f
         for (i in 0 until maxHp) {
-            paint.color = if (i < playerHp) Color.RED else Color.rgb(80, 80, 80)
-            canvas.drawText("♥", heartX, 80f, paint)
-            heartX += 50f
+            if (i < playerHp) {
+                paint.color = Color.RED
+                paint.style = Paint.Style.FILL
+                drawHeart(canvas, heartX, 65f, 20f, paint)
+            } else {
+                paint.color = Color.rgb(80, 80, 80)
+                paint.style = Paint.Style.STROKE
+                paint.strokeWidth = 5f
+                drawHeart(canvas, heartX, 65f, 20f, paint)
+            }
+            heartX += 60f
         }
+        paint.style = Paint.Style.FILL
         
         paint.color = Color.WHITE
         paint.textAlign = Paint.Align.CENTER
@@ -1181,5 +1191,16 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback 
         synchronized(holder) {
             lastUpdateTime = System.currentTimeMillis()
         }
+    }
+
+    private fun drawHeart(canvas: Canvas, x: Float, y: Float, size: Float, paint: Paint) {
+        val path = Path()
+        val w = size
+        val h = size
+        path.moveTo(x, y - h * 0.25f)
+        path.cubicTo(x - w * 0.5f, y - h * 0.75f, x - w, y - h * 0.1f, x, y + h * 0.5f)
+        path.cubicTo(x + w, y - h * 0.1f, x + w * 0.5f, y - h * 0.75f, x, y - h * 0.25f)
+        path.close()
+        canvas.drawPath(path, paint)
     }
 }
