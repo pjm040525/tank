@@ -9,7 +9,7 @@ enum class EnemyType {
     BASIC, FAST, STRONG, ZIGZAG
 }
 
-class Enemy(var x: Float, var y: Float, val type: EnemyType) {
+class Enemy(var x: Float, var y: Float, val type: EnemyType, val stage: Int = 1) {
     var width = 100f
     var height = 100f
     var speed = 8f
@@ -28,18 +28,26 @@ class Enemy(var x: Float, var y: Float, val type: EnemyType) {
     init {
         when (type) {
             EnemyType.BASIC -> {
-                speed = 8f; hp = 1; scoreValue = 100; bodyPaint.color = Color.BLUE
+                speed = if (stage >= 2) 12f else 8f
+                hp = if (stage >= 2) 2 else 1
+                scoreValue = 100; bodyPaint.color = Color.BLUE
             }
             EnemyType.FAST -> {
-                speed = 15f; hp = 1; scoreValue = 150; bodyPaint.color = Color.CYAN
+                speed = if (stage >= 2) 20f else 15f
+                hp = 1
+                scoreValue = 150; bodyPaint.color = Color.CYAN
                 width = 80f; height = 80f
             }
             EnemyType.STRONG -> {
-                speed = 5f; hp = 3; scoreValue = 300; bodyPaint.color = Color.rgb(139, 0, 0)
+                speed = if (stage >= 2) 7f else 5f
+                hp = if (stage >= 2) 5 else 3
+                scoreValue = 300; bodyPaint.color = Color.rgb(139, 0, 0)
                 width = 140f; height = 140f
             }
             EnemyType.ZIGZAG -> {
-                speed = 7f; hp = 1; scoreValue = 200; bodyPaint.color = Color.MAGENTA
+                speed = if (stage >= 2) 10f else 7f
+                hp = if (stage >= 2) 2 else 1
+                scoreValue = 200; bodyPaint.color = Color.MAGENTA
                 width = 90f; height = 90f
             }
         }

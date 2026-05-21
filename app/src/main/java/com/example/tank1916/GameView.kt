@@ -32,7 +32,7 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback 
 
     private val enemies = mutableListOf<Enemy>()
     private var lastWaveTime = 0L
-    private val waveDelay = 2500L 
+    private val waveDelay = 1800L 
     private var waveCount = 0 
     private val random = Random()
 
@@ -62,6 +62,9 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback 
     private var skillGauge = 0
     private val skillGaugeMax = 100
     private var pendingSkillUse = false
+    private var shieldTimer = 0
+    private var pendingShieldUse = false
+    private var pendingRepairUse = false
     private var skillTextTimer = 0
     private val skillButtonRect = RectF()
 
@@ -163,6 +166,21 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback 
         skillGauge = 0
     }
 
+    private fun useShield() {
+        shieldTimer = 180
+        shakeTimer = 15
+        effects.add(Effect(playerX, playerY - 50f, EffectType.PICKUP_TEXT, "+SHIELD"))
+        skillGauge = 0
+    }
+
+    private fun useRepair() {
+        if (playerHp < maxHp) {
+            playerHp++
+            effects.add(Effect(playerX, playerY - 50f, EffectType.PICKUP_TEXT, "REPAIR +1"))
+            skillGauge = 0
+        }
+    }
+
     private fun increaseSkillGauge(type: EnemyType) {
         val gain = when (type) {
             EnemyType.BASIC -> 10
@@ -183,6 +201,15 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback 
             useSkill()
             pendingSkillUse = false
         }
+        if (pendingShieldUse) {
+            useShield()
+            pendingShieldUse = false
+        }
+        if (pendingRepairUse) {
+            useRepair()
+            pendingRepairUse = false
+        }
+        if (shieldTimer > 0) shieldTimer--
         if (skillTextTimer > 0) skillTextTimer--
 
         val currentTime = System.currentTimeMillis()
@@ -208,7 +235,9 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback 
 
         bgOffsetY += scrollSpeed
         val maxBgOffset = if (currentStage == 1) 200f else 400f
-        if (bgOffsetY > maxBgOffset) bgOffsetY = 0f
+        if (bgOffsetY > maxBgOffset) {
+            bgOffsetY -= maxBgOffset
+        }
 
         if (shakeTimer > 0) shakeTimer--
 
@@ -218,8 +247,8 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback 
             lastFireTime = currentTime
         }
 
-        var dynamicWaveDelay = Math.max(1000L, waveDelay - (score / 1000) * 100L)
-        if (currentStage >= 2) dynamicWaveDelay = (dynamicWaveDelay * 0.8f).toLong()
+        var dynamicWaveDelay = Math.max(800L, waveDelay - (score / 1000) * 100L)
+        if (currentStage >= 2) dynamicWaveDelay = (dynamicWaveDelay * 0.7f).toLong()
 
         if (stageProgress < 95f && currentTime - lastWaveTime > dynamicWaveDelay) {
             spawnEnemyWave()
@@ -270,13 +299,19 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback 
                 }
             }
 
-            if (invincibleTimer <= 0 && enemy.isActive && RectF.intersects(playerBounds, enemy.getBounds())) {
-                enemy.isActive = false
-                playerHp--
-                invincibleTimer = 60
-                shakeTimer = 15
-                effects.add(Effect(playerX, playerY, EffectType.EXPLOSION))
-                if (playerHp <= 0) { playerHp = 0; gameState = GameState.GAME_OVER }
+            if (enemy.isActive && RectF.intersects(playerBounds, enemy.getBounds())) {
+                if (shieldTimer > 0) {
+                    enemy.isActive = false
+                    score += enemy.scoreValue
+                    effects.add(Effect(enemy.x, enemy.y, EffectType.EXPLOSION))
+                } else if (invincibleTimer <= 0) {
+                    enemy.isActive = false
+                    playerHp--
+                    invincibleTimer = 60
+                    shakeTimer = 15
+                    effects.add(Effect(playerX, playerY, EffectType.EXPLOSION))
+                    if (playerHp <= 0) { playerHp = 0; gameState = GameState.GAME_OVER }
+                }
             }
         }
 
@@ -290,9 +325,12 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback 
             }
         }
 
-        if (invincibleTimer <= 0) {
-            for (bb in bossBullets) {
-                if (bb.isActive && RectF.intersects(bb.getBounds(), playerBounds)) {
+        for (bb in bossBullets) {
+            if (bb.isActive && RectF.intersects(bb.getBounds(), playerBounds)) {
+                if (shieldTimer > 0) {
+                    bb.isActive = false
+                    effects.add(Effect(bb.x, bb.y, EffectType.HIT_SPARK, maxLifeTime = 10))
+                } else if (invincibleTimer <= 0) {
                     bb.isActive = false
                     playerHp--
                     invincibleTimer = 60
@@ -382,45 +420,55 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback 
         when (patternType) {
             0 -> {
                 for (i in 0 until laneCount) {
-                    if (random.nextFloat() > 0.3f) {
+                    val threshold = if (currentStage >= 2) 0.2f else 0.3f
+                    if (random.nextFloat() > threshold) {
                         val r = random.nextFloat()
-                        val type = when {
-                            r > 0.9f -> EnemyType.STRONG
-                            r > 0.7f -> EnemyType.ZIGZAG
-                            else -> EnemyType.BASIC
+                        val type = if (currentStage >= 2) {
+                            when {
+                                r > 0.8f -> EnemyType.STRONG
+                                r > 0.5f -> EnemyType.ZIGZAG
+                                r > 0.3f -> EnemyType.FAST
+                                else -> EnemyType.BASIC
+                            }
+                        } else {
+                            when {
+                                r > 0.9f -> EnemyType.STRONG
+                                r > 0.7f -> EnemyType.ZIGZAG
+                                else -> EnemyType.BASIC
+                            }
                         }
-                        enemies.add(Enemy(laneWidth * i + laneWidth / 2, -100f, type))
+                        enemies.add(Enemy(laneWidth * i + laneWidth / 2, -100f, type, currentStage))
                     }
                 }
             }
             1 -> {
                 val midX = screenWidth / 2
-                enemies.add(Enemy(midX, -100f, EnemyType.BASIC))
-                enemies.add(Enemy(midX - laneWidth, -200f, EnemyType.BASIC))
-                enemies.add(Enemy(midX + laneWidth, -200f, EnemyType.BASIC))
-                enemies.add(Enemy(midX - laneWidth * 2, -300f, EnemyType.BASIC))
-                enemies.add(Enemy(midX + laneWidth * 2, -300f, EnemyType.BASIC))
+                enemies.add(Enemy(midX, -100f, EnemyType.BASIC, currentStage))
+                enemies.add(Enemy(midX - laneWidth, -200f, EnemyType.BASIC, currentStage))
+                enemies.add(Enemy(midX + laneWidth, -200f, EnemyType.BASIC, currentStage))
+                enemies.add(Enemy(midX - laneWidth * 2, -300f, EnemyType.BASIC, currentStage))
+                enemies.add(Enemy(midX + laneWidth * 2, -300f, EnemyType.BASIC, currentStage))
             }
             2 -> {
                 val midX = screenWidth / 2
-                enemies.add(Enemy(midX, -100f, EnemyType.STRONG))
-                enemies.add(Enemy(midX - laneWidth, -250f, EnemyType.ZIGZAG))
-                enemies.add(Enemy(midX + laneWidth, -250f, EnemyType.ZIGZAG))
-                enemies.add(Enemy(midX, -400f, EnemyType.BASIC))
+                enemies.add(Enemy(midX, -100f, EnemyType.STRONG, currentStage))
+                enemies.add(Enemy(midX - laneWidth, -250f, EnemyType.ZIGZAG, currentStage))
+                enemies.add(Enemy(midX + laneWidth, -250f, EnemyType.ZIGZAG, currentStage))
+                enemies.add(Enemy(midX, -400f, EnemyType.BASIC, currentStage))
             }
             3 -> {
                 val lane = random.nextInt(laneCount)
-                enemies.add(Enemy(laneWidth * lane + laneWidth / 2, -100f, EnemyType.FAST))
-                enemies.add(Enemy(laneWidth * lane + laneWidth / 2, -250f, EnemyType.FAST))
-                enemies.add(Enemy(laneWidth * lane + laneWidth / 2, -400f, EnemyType.FAST))
+                enemies.add(Enemy(laneWidth * lane + laneWidth / 2, -100f, EnemyType.FAST, currentStage))
+                enemies.add(Enemy(laneWidth * lane + laneWidth / 2, -250f, EnemyType.FAST, currentStage))
+                enemies.add(Enemy(laneWidth * lane + laneWidth / 2, -400f, EnemyType.FAST, currentStage))
             }
             4 -> {
-                enemies.add(Enemy(screenWidth * 0.25f, -100f, EnemyType.ZIGZAG))
-                enemies.add(Enemy(screenWidth * 0.75f, -100f, EnemyType.ZIGZAG))
+                enemies.add(Enemy(screenWidth * 0.25f, -100f, EnemyType.ZIGZAG, currentStage))
+                enemies.add(Enemy(screenWidth * 0.75f, -100f, EnemyType.ZIGZAG, currentStage))
             }
             5 -> {
-                enemies.add(Enemy(laneWidth * 1 + laneWidth / 2, -100f, EnemyType.STRONG))
-                enemies.add(Enemy(laneWidth * 3 + laneWidth / 2, -100f, EnemyType.STRONG))
+                enemies.add(Enemy(laneWidth * 1 + laneWidth / 2, -100f, EnemyType.STRONG, currentStage))
+                enemies.add(Enemy(laneWidth * 3 + laneWidth / 2, -100f, EnemyType.STRONG, currentStage))
             }
         }
     }
@@ -457,16 +505,19 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback 
         } else {
             canvas.drawColor(Color.rgb(210, 180, 140))
             paint.color = Color.rgb(180, 150, 110); paint.strokeWidth = 0f
-            var startY = bgOffsetY - 400f
-            while (startY < height) {
+            val patternHeight = 400f
+            var startY = bgOffsetY - patternHeight * 2f // Start far above screen to buffer incoming elements
+            while (startY < height + patternHeight) {   // Draw beyond screen bottom to prevent bottom pops
                 canvas.drawCircle(width * 0.2f, startY + 100f, 60f, paint)
                 canvas.drawCircle(width * 0.8f, startY + 300f, 80f, paint)
-                startY += 400f
+                startY += patternHeight
             }
         }
 
         bullets.forEach { it.draw(canvas) }
         enemies.forEach { it.draw(canvas) }
+        bossBullets.forEach { it.draw(canvas) }
+        boss?.draw(canvas)
         items.forEach { it.draw(canvas) }
         effects.forEach { it.draw(canvas) }
 
@@ -493,81 +544,98 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback 
                 paint.color = cannonColor
                 canvas.drawRect(playerX - 15f, playerY - playerSize, playerX + 15f, playerY, paint)
             }
+            if (shieldTimer > 0) {
+                paint.style = Paint.Style.STROKE
+                paint.strokeWidth = 8f
+                val alpha = Math.min(100, shieldTimer * 120 / 180).coerceAtLeast(30)
+                paint.color = Color.argb(alpha, 0, 200, 255)
+                canvas.drawCircle(playerX, playerY, playerSize * 0.9f, paint)
+                paint.style = Paint.Style.FILL
+            }
         }
 
         // --- HUD Readability: Draw HUD background bar ---
-        paint.color = Color.argb(120, 0, 0, 0)
+        paint.color = Color.argb(140, 10, 10, 10)
         paint.style = Paint.Style.FILL
-        canvas.drawRect(0f, 0f, width.toFloat(), 180f, paint)
+        canvas.drawRect(0f, 0f, width.toFloat(), 230f, paint)
 
-        // Draw HUD Text & HP Hearts
-        paint.color = Color.WHITE; paint.textSize = 60f; paint.textAlign = Paint.Align.LEFT
-        paint.isFakeBoldText = false
-        canvas.drawText("HP: ", 50f, 100f, paint)
+        // Draw Row 1: HP, STAGE, Score (y = 80f)
+        paint.color = Color.WHITE; paint.textSize = 45f; paint.textAlign = Paint.Align.LEFT
+        paint.isFakeBoldText = true
+        canvas.drawText("HP: ", 50f, 80f, paint)
         val hpTextWidth = paint.measureText("HP: ")
         
         var heartX = 50f + hpTextWidth
         for (i in 0 until maxHp) {
             paint.color = if (i < playerHp) Color.RED else Color.rgb(80, 80, 80)
-            canvas.drawText("♥", heartX, 100f, paint)
-            heartX += 55f
+            canvas.drawText("♥", heartX, 80f, paint)
+            heartX += 50f
         }
+        
+        paint.color = Color.WHITE
         paint.textAlign = Paint.Align.CENTER
-        canvas.drawText("PWR: $weaponLevel", width / 2f, 100f, paint)
+        canvas.drawText("STAGE $currentStage", width / 2f, 80f, paint)
+        
         paint.textAlign = Paint.Align.RIGHT
-        canvas.drawText("Score: $score", width - 180f, 100f, paint) // Shift slightly left to avoid overlapping Pause button
-        paint.textAlign = Paint.Align.CENTER; paint.textSize = 40f
-        canvas.drawText("STAGE $currentStage", width / 2f, 50f, paint)
+        canvas.drawText("Score: $score", width - 160f, 80f, paint)
 
-        // --- Pause Button Configuration and Draw ---
-        val btnSize = 80f
-        val margin = 50f
-        pauseBtnRect.set(width - btnSize - margin, margin, width - margin, margin + btnSize)
+        // Draw Row 2: PWR (y = 140f) in Gold
+        paint.color = Color.rgb(255, 215, 0) // Gold
+        paint.textSize = 40f
+        paint.textAlign = Paint.Align.LEFT
+        canvas.drawText("PWR: $weaponLevel", 50f, 140f, paint)
+
+        // --- Pause Button Configuration and Draw (Vertical align with Row 1) ---
+        val btnSize = 70f
+        val marginX = 50f
+        val marginY = 45f
+        pauseBtnRect.set(width - btnSize - marginX, marginY, width - marginX, marginY + btnSize)
 
         // Draw Pause button border
         paint.color = Color.rgb(200, 200, 200)
         paint.style = Paint.Style.STROKE
-        paint.strokeWidth = 5f
-        canvas.drawRoundRect(pauseBtnRect, 15f, 15f, paint)
+        paint.strokeWidth = 4f
+        canvas.drawRoundRect(pauseBtnRect, 12f, 12f, paint)
 
         // Draw "||" lines
         paint.style = Paint.Style.FILL
         paint.color = Color.WHITE
-        val barW = 10f
-        val barH = 40f
-        val gap = 15f
+        val barW = 8f
+        val barH = 30f
+        val gap = 12f
         val centerX = pauseBtnRect.centerX()
         val centerY = pauseBtnRect.centerY()
         canvas.drawRect(centerX - barW - gap/2, centerY - barH/2, centerX - gap/2, centerY + barH/2, paint)
         canvas.drawRect(centerX + gap/2, centerY - barH/2, centerX + barW + gap/2, centerY + barH/2, paint)
 
-        // Boss / Stage Progress Bar
+        // Boss / Stage Progress Bar (Moved lower to y = 185f)
         if (b == null) {
-            paint.color = Color.GRAY
-            val barWidth = width * 0.8f; val barX = width * 0.1f; val barY = 150f
-            canvas.drawRect(barX, barY, barX + barWidth, barY + 20f, paint)
+            paint.color = Color.rgb(60, 60, 60)
+            val barWidth = width * 0.8f; val barX = width * 0.1f; val barY = 185f
+            canvas.drawRect(barX, barY, barX + barWidth, barY + 15f, paint)
             paint.color = Color.CYAN
-            canvas.drawRect(barX, barY, barX + barWidth * (stageProgress / 100f), barY + 20f, paint)
+            canvas.drawRect(barX, barY, barX + barWidth * (stageProgress / 100f), barY + 15f, paint)
         } else {
-            paint.color = Color.DKGRAY
-            val barWidth = width * 0.9f; val barX = width * 0.05f; val barY = 150f
-            canvas.drawRect(barX, barY, barX + barWidth, barY + 30f, paint)
+            paint.color = Color.rgb(40, 40, 40)
+            val barWidth = width * 0.9f; val barX = width * 0.05f; val barY = 180f
+            canvas.drawRect(barX, barY, barX + barWidth, barY + 25f, paint)
             paint.color = Color.RED
             val hpRatio = b.hp.toFloat() / b.maxHp
-            canvas.drawRect(barX, barY, barX + barWidth * hpRatio, barY + 30f, paint)
-            paint.color = Color.WHITE; paint.textSize = 30f; paint.textAlign = Paint.Align.CENTER
-            canvas.drawText("BOSS: ${b.bossName}", width / 2f, barY + 25f, paint)
+            canvas.drawRect(barX, barY, barX + barWidth * hpRatio, barY + 25f, paint)
+            paint.color = Color.WHITE; paint.textSize = 24f; paint.textAlign = Paint.Align.CENTER
+            paint.isFakeBoldText = true
+            canvas.drawText("BOSS: ${b.bossName}", width / 2f, barY + 20f, paint)
 
             if (b.y < 300f) {
                 val blink = (System.currentTimeMillis() / 250) % 2 == 0L
                 if (blink) {
                     paint.color = Color.RED
-                    paint.textSize = 100f
+                    paint.textSize = 80f
                     paint.textAlign = Paint.Align.CENTER
                     paint.isFakeBoldText = true
                     canvas.drawText("⚠️ WARNING ⚠️", width / 2f, height / 3f, paint)
-                    paint.textSize = 50f
-                    canvas.drawText("BOSS APPROACHING", width / 2f, height / 3f + 80f, paint)
+                    paint.textSize = 40f
+                    canvas.drawText("BOSS APPROACHING", width / 2f, height / 3f + 60f, paint)
                 }
             }
         }
@@ -628,7 +696,7 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback 
         }
 
         if (gameState == GameState.GAME_OVER) drawGameOverScreen(canvas)
-        else if (gameState == GameState.STAGE_CLEAR) drawStageClearScreen(canvas)
+        else if (gameState == GameState.STAGE_CLEAR || gameState == GameState.FINAL_CLEAR) drawStageClearScreen(canvas)
         else if (gameState == GameState.PAUSED) drawPausedScreen(canvas)
 
         if (isShake) {
@@ -970,8 +1038,10 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback 
 
     override fun onTouchEvent(event: MotionEvent): Boolean {
         synchronized(holder) {
+            val isButtonTouch = gameState == GameState.PLAYING && (pauseBtnRect.contains(event.x, event.y) || skillButtonRect.contains(event.x, event.y))
+
             if (event.action != MotionEvent.ACTION_DOWN) {
-                if (gameState == GameState.PLAYING) {
+                if (gameState == GameState.PLAYING && !isButtonTouch) {
                     targetPlayerX = event.x
                     targetPlayerY = event.y - 150f
                 }
@@ -1017,11 +1087,16 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback 
                         if (skillGauge >= skillGaugeMax) {
                             if (selectedSkillName == "ARTILLERY") {
                                 pendingSkillUse = true
-                            } else {
-                                post {
-                                    android.widget.Toast.makeText(context, "$selectedSkillName activated! (Effect coming soon)", android.widget.Toast.LENGTH_SHORT).show()
+                            } else if (selectedSkillName == "SHIELD") {
+                                pendingShieldUse = true
+                            } else if (selectedSkillName == "REPAIR") {
+                                if (playerHp >= maxHp) {
+                                    post {
+                                        android.widget.Toast.makeText(context, "HP is already full!", android.widget.Toast.LENGTH_SHORT).show()
+                                    }
+                                } else {
+                                    pendingRepairUse = true
                                 }
-                                skillGauge = 0
                             }
                         }
                     } else {
@@ -1068,7 +1143,10 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback 
         lastFireTime = System.currentTimeMillis()
         waveCount = 0
         shakeTimer = 0
+        shieldTimer = 0
         pendingSkillUse = false
+        pendingShieldUse = false
+        pendingRepairUse = false
         skillTextTimer = 0
         enemies.clear()
         bullets.clear()
