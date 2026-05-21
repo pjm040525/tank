@@ -28,6 +28,7 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback 
     private var soundPool: SoundPool? = null
     private var shootSoundId: Int = 0
     private var boomSoundId: Int = 0
+    private var healSoundId: Int = 0
 
     private var playerX = 0f
     private var playerY = 0f
@@ -140,6 +141,7 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback 
             .build()
         shootSoundId = soundPool?.load(context, R.raw.shooting, 1) ?: 0
         boomSoundId = soundPool?.load(context, R.raw.boom, 1) ?: 0
+        healSoundId = soundPool?.load(context, R.raw.heal, 1) ?: 0
     }
 
     override fun surfaceCreated(holder: SurfaceHolder) {
@@ -229,6 +231,9 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback 
 
     private fun useRepair() {
         if (playerHp < maxHp) {
+            if (healSoundId != 0) {
+                soundPool?.play(healSoundId, 1f, 1f, 1, 0, 1f)
+            }
             playerHp++
             effects.add(Effect(playerX, playerY - 50f, EffectType.PICKUP_TEXT, "REPAIR +1"))
             skillGauge = 0
