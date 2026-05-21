@@ -3,8 +3,12 @@ package com.example.tank1916
 import android.content.Context
 import android.graphics.Canvas
 import android.graphics.Color
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.graphics.Paint
 import android.graphics.Path
+import android.graphics.PorterDuff
+import android.graphics.PorterDuffColorFilter
 import android.graphics.RectF
 import android.view.MotionEvent
 import android.view.SurfaceHolder
@@ -39,6 +43,14 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback 
 
     private var bgOffsetY = 0f
     private val scrollSpeed = 15f
+
+    private var bodyBitmap: Bitmap? = null
+    private var bigGunBitmap: Bitmap? = null
+    private var rocketLauncherBitmap: Bitmap? = null
+    private var trackBitmap: Bitmap? = null
+    
+    private val treadMarks = mutableListOf<TreadMark>()
+    private var treadSpawnTimer = 0
 
     private var playerHp = 3
     private val maxHp = 3
@@ -92,6 +104,16 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback 
         holder.addCallback(this)
         isFocusable = true
         loadBestScore()
+        
+        // Load tank skin sprite bitmaps with safe fallback
+        try {
+            bodyBitmap = BitmapFactory.decodeResource(resources, R.drawable.medium_tank)
+            bigGunBitmap = BitmapFactory.decodeResource(resources, R.drawable.big_gun)
+            rocketLauncherBitmap = BitmapFactory.decodeResource(resources, R.drawable.rocket_launcher)
+            trackBitmap = BitmapFactory.decodeResource(resources, R.drawable.track)
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
     }
 
     override fun surfaceCreated(holder: SurfaceHolder) {
@@ -239,6 +261,18 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback 
         if (bgOffsetY > maxBgOffset) {
             bgOffsetY -= maxBgOffset
         }
+
+        // Spawn/update tread marks left by player tank
+        val activeTrackBmp = trackBitmap
+        if (activeTrackBmp != null) {
+            treadSpawnTimer++
+            if (treadSpawnTimer >= 5) {
+                treadSpawnTimer = 0
+                treadMarks.add(TreadMark(playerX, playerY + 30f))
+            }
+        }
+        treadMarks.forEach { it.update(scrollSpeed) }
+        treadMarks.removeAll { !it.isActive || it.y > height + 50f }
 
         if (shakeTimer > 0) shakeTimer--
 
@@ -515,6 +549,12 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback 
             }
         }
 
+        // Draw tread marks on the ground behind/underneath tanks
+        val drawTrackBmp = trackBitmap
+        if (drawTrackBmp != null) {
+            treadMarks.forEach { it.draw(canvas, drawTrackBmp, paint) }
+        }
+
         bullets.forEach { it.draw(canvas) }
         enemies.forEach { it.draw(canvas) }
         bossBullets.forEach { it.draw(canvas) }
@@ -524,26 +564,58 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback 
 
         if (gameState != GameState.GAME_OVER && gameState != GameState.PAUSED) {
             if (!(invincibleTimer > 0 && (invincibleTimer / 5) % 2 == 0)) {
-                val bodyColor: Int
-                val cannonColor: Int
-                when (selectedSkinName) {
-                    "DESERT" -> {
-                        bodyColor = Color.rgb(210, 180, 100)
-                        cannonColor = Color.rgb(120, 90, 50)
+                val bodyBmp = bodyBitmap
+                val turretBmp = if (selectedSkinName == "DESERT") rocketLauncherBitmap else bigGunBitmap
+
+                if (bodyBmp != null && turretBmp != null) {
+                    val tintColor: Int? = when (selectedSkinName) {
+                        "DESERT" -> Color.rgb(240, 200, 140)
+                        "HEAVY" -> Color.rgb(110, 130, 110)
+                        else -> null
                     }
-                    "HEAVY" -> {
-                        bodyColor = Color.rgb(70, 80, 70)
-                        cannonColor = Color.rgb(40, 50, 40)
+                    
+                    if (tintColor != null) {
+                        paint.colorFilter = PorterDuffColorFilter(tintColor, PorterDuff.Mode.MULTIPLY)
+                    } else {
+                        paint.colorFilter = null
                     }
-                    else -> { // DEFAULT
-                        bodyColor = Color.GREEN
-                        cannonColor = Color.rgb(50, 100, 50)
+
+                    // Render tank body
+                    val bodyW = playerSize * 0.9f
+                    val bodyH = bodyW * (89f / 76f)
+                    val bodyRectF = RectF(playerX - bodyW/2, playerY - bodyH/2, playerX + bodyW/2, playerY + bodyH/2)
+                    canvas.drawBitmap(bodyBmp, null, bodyRectF, paint)
+
+                    // Render tank turret
+                    val turretW = bodyW * (52f / 76f)
+                    val turretH = turretW * (if (selectedSkinName == "DESERT") (62f / 52f) else (66f / 52f))
+                    val turretCenterY = playerY - 15f
+                    val turretRectF = RectF(playerX - turretW/2, turretCenterY - turretH/2, playerX + turretW/2, turretCenterY + turretH/2)
+                    canvas.drawBitmap(turretBmp, null, turretRectF, paint)
+
+                    paint.colorFilter = null
+                } else {
+                    val bodyColor: Int
+                    val cannonColor: Int
+                    when (selectedSkinName) {
+                        "DESERT" -> {
+                            bodyColor = Color.rgb(210, 180, 100)
+                            cannonColor = Color.rgb(120, 90, 50)
+                        }
+                        "HEAVY" -> {
+                            bodyColor = Color.rgb(70, 80, 70)
+                            cannonColor = Color.rgb(40, 50, 40)
+                        }
+                        else -> { // DEFAULT
+                            bodyColor = Color.GREEN
+                            cannonColor = Color.rgb(50, 100, 50)
+                        }
                     }
+                    paint.color = bodyColor
+                    canvas.drawRect(playerX - playerSize/2, playerY - playerSize/2, playerX + playerSize/2, playerY + playerSize/2, paint)
+                    paint.color = cannonColor
+                    canvas.drawRect(playerX - 15f, playerY - playerSize, playerX + 15f, playerY, paint)
                 }
-                paint.color = bodyColor
-                canvas.drawRect(playerX - playerSize/2, playerY - playerSize/2, playerX + playerSize/2, playerY + playerSize/2, paint)
-                paint.color = cannonColor
-                canvas.drawRect(playerX - 15f, playerY - playerSize, playerX + 15f, playerY, paint)
             }
             if (shieldTimer > 0) {
                 paint.style = Paint.Style.STROKE
@@ -909,12 +981,41 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback 
         val previewY = rect.centerY()
         val tankSize = 55f
 
-        // Draw preview cannon
-        paint.color = cannonColor
-        canvas.drawRect(previewX - 10f, previewY - tankSize/2 - 15f, previewX + 10f, previewY, paint)
-        // Draw preview body
-        paint.color = bodyColor
-        canvas.drawRect(previewX - tankSize/2, previewY - tankSize/2, previewX + tankSize/2, previewY + tankSize/2, paint)
+        val previewBodyBmp = bodyBitmap
+        val previewTurretBmp = if (name == "DESERT") rocketLauncherBitmap else bigGunBitmap
+
+        if (previewBodyBmp != null && previewTurretBmp != null) {
+            val tintColor: Int? = when (name) {
+                "DESERT" -> Color.rgb(240, 200, 140)
+                "HEAVY" -> Color.rgb(110, 130, 110)
+                else -> null
+            }
+            if (tintColor != null) {
+                paint.colorFilter = PorterDuffColorFilter(tintColor, PorterDuff.Mode.MULTIPLY)
+            } else {
+                paint.colorFilter = null
+            }
+
+            val bodyW = tankSize * 0.9f
+            val bodyH = bodyW * (89f / 76f)
+            val bodyRectF = RectF(previewX - bodyW/2, previewY - bodyH/2, previewX + bodyW/2, previewY + bodyH/2)
+            canvas.drawBitmap(previewBodyBmp, null, bodyRectF, paint)
+
+            val turretW = bodyW * (52f / 76f)
+            val turretH = turretW * (if (name == "DESERT") (62f / 52f) else (66f / 52f))
+            val turretCenterY = previewY - 8f
+            val turretRectF = RectF(previewX - turretW/2, turretCenterY - turretH/2, previewX + turretW/2, turretCenterY + turretH/2)
+            canvas.drawBitmap(previewTurretBmp, null, turretRectF, paint)
+
+            paint.colorFilter = null
+        } else {
+            // Draw preview cannon
+            paint.color = cannonColor
+            canvas.drawRect(previewX - 10f, previewY - tankSize/2 - 15f, previewX + 10f, previewY, paint)
+            // Draw preview body
+            paint.color = bodyColor
+            canvas.drawRect(previewX - tankSize/2, previewY - tankSize/2, previewX + tankSize/2, previewY + tankSize/2, paint)
+        }
 
         // Draw Skin Information Texts
         val textStartX = rect.left + 180f
@@ -1164,6 +1265,7 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback 
         effects.clear()
         bossBullets.clear()
         boss = null
+        treadMarks.clear()
     }
 
     private fun loadBestScore() {
@@ -1202,5 +1304,26 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback 
         path.cubicTo(x + w, y - h * 0.1f, x + w * 0.5f, y - h * 0.75f, x, y - h * 0.25f)
         path.close()
         canvas.drawPath(path, paint)
+    }
+}
+
+data class TreadMark(
+    var x: Float,
+    var y: Float,
+    var alpha: Int = 120,
+    var isActive: Boolean = true
+) {
+    fun update(scrollSpeed: Float) {
+        y += scrollSpeed
+        alpha -= 2
+        if (alpha <= 0) {
+            isActive = false
+        }
+    }
+
+    fun draw(canvas: Canvas, bitmap: Bitmap, paint: Paint) {
+        paint.alpha = alpha
+        canvas.drawBitmap(bitmap, x - bitmap.width / 2f, y - bitmap.height / 2f, paint)
+        paint.alpha = 255
     }
 }
