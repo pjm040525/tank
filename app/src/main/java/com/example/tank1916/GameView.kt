@@ -10,6 +10,8 @@ import android.graphics.Path
 import android.graphics.PorterDuff
 import android.graphics.PorterDuffColorFilter
 import android.graphics.RectF
+import android.media.AudioAttributes
+import android.media.SoundPool
 import android.view.MotionEvent
 import android.view.SurfaceHolder
 import android.view.SurfaceView
@@ -23,6 +25,9 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback 
 
     private var thread: MainThread? = null
     private val paint = Paint()
+    private var soundPool: SoundPool? = null
+    private var shootSoundId: Int = 0
+    private var boomSoundId: Int = 0
 
     private var playerX = 0f
     private var playerY = 0f
@@ -124,6 +129,17 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback 
         } catch (e: Exception) {
             e.printStackTrace()
         }
+
+        val audioAttributes = AudioAttributes.Builder()
+            .setUsage(AudioAttributes.USAGE_GAME)
+            .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+            .build()
+        soundPool = SoundPool.Builder()
+            .setMaxStreams(5)
+            .setAudioAttributes(audioAttributes)
+            .build()
+        shootSoundId = soundPool?.load(context, R.raw.shooting, 1) ?: 0
+        boomSoundId = soundPool?.load(context, R.raw.boom, 1) ?: 0
     }
 
     override fun surfaceCreated(holder: SurfaceHolder) {
@@ -149,9 +165,14 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback 
                 e.printStackTrace()
             }
         }
+        soundPool?.release()
+        soundPool = null
     }
 
     private fun useSkill() {
+        if (boomSoundId != 0) {
+            soundPool?.play(boomSoundId, 1f, 1f, 1, 0, 1f)
+        }
         shakeTimer = 40
         skillTextTimer = 45
 
@@ -402,6 +423,9 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback 
     }
 
     private fun fireWeapon() {
+        if (shootSoundId != 0) {
+            soundPool?.play(shootSoundId, 1f, 1f, 1, 0, 1f)
+        }
         when (weaponLevel) {
             1 -> bullets.add(Bullet(playerX, playerY - playerSize, bulletSpeed))
             2 -> {
