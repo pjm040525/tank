@@ -30,6 +30,8 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback 
     private var boomSoundId: Int = 0
     private var healSoundId: Int = 0
     private var shieldSoundId: Int = 0
+    private var hitSoundId: Int = 0
+    private var repairSoundId: Int = 0
 
     private var playerX = 0f
     private var playerY = 0f
@@ -144,6 +146,8 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback 
         boomSoundId = soundPool?.load(context, R.raw.boom, 1) ?: 0
         healSoundId = soundPool?.load(context, R.raw.heal, 1) ?: 0
         shieldSoundId = soundPool?.load(context, R.raw.shei, 1) ?: 0
+        hitSoundId = soundPool?.load(context, R.raw.thud_sfx, 1) ?: 0
+        repairSoundId = soundPool?.load(context, R.raw.bumper, 1) ?: 0
     }
 
     override fun surfaceCreated(holder: SurfaceHolder) {
@@ -236,6 +240,9 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback 
 
     private fun useRepair() {
         if (playerHp < maxHp) {
+            if (repairSoundId != 0) {
+                soundPool?.play(repairSoundId, 1f, 1f, 1, 0, 1f)
+            }
             playerHp++
             effects.add(Effect(playerX, playerY - 50f, EffectType.PICKUP_TEXT, "REPAIR +1"))
             skillGauge = 0
@@ -378,6 +385,9 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback 
                     score += enemy.scoreValue
                     effects.add(Effect(enemy.x, enemy.y, EffectType.EXPLOSION))
                 } else if (invincibleTimer <= 0) {
+                    if (hitSoundId != 0) {
+                        soundPool?.play(hitSoundId, 1f, 1f, 1, 0, 1f)
+                    }
                     enemy.isActive = false
                     playerHp--
                     invincibleTimer = 60
