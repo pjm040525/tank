@@ -29,6 +29,7 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback 
     private var shootSoundId: Int = 0
     private var boomSoundId: Int = 0
     private var healSoundId: Int = 0
+    private var shieldSoundId: Int = 0
 
     private var playerX = 0f
     private var playerY = 0f
@@ -142,6 +143,7 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback 
         shootSoundId = soundPool?.load(context, R.raw.shooting, 1) ?: 0
         boomSoundId = soundPool?.load(context, R.raw.boom, 1) ?: 0
         healSoundId = soundPool?.load(context, R.raw.heal, 1) ?: 0
+        shieldSoundId = soundPool?.load(context, R.raw.shei, 1) ?: 0
     }
 
     override fun surfaceCreated(holder: SurfaceHolder) {
@@ -223,6 +225,9 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback 
     }
 
     private fun useShield() {
+        if (shieldSoundId != 0) {
+            soundPool?.play(shieldSoundId, 1f, 1f, 1, 0, 1f)
+        }
         shieldTimer = 180
         shakeTimer = 15
         effects.add(Effect(playerX, playerY - 50f, EffectType.PICKUP_TEXT, "+SHIELD"))
