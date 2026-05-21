@@ -231,9 +231,6 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback 
 
     private fun useRepair() {
         if (playerHp < maxHp) {
-            if (healSoundId != 0) {
-                soundPool?.play(healSoundId, 1f, 1f, 1, 0, 1f)
-            }
             playerHp++
             effects.add(Effect(playerX, playerY - 50f, EffectType.PICKUP_TEXT, "REPAIR +1"))
             skillGauge = 0
@@ -460,6 +457,9 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback 
     }
 
     private fun applyItemEffect(type: ItemType) {
+        if (healSoundId != 0) {
+            soundPool?.play(healSoundId, 1f, 1f, 1, 0, 1f)
+        }
         when (type) {
             ItemType.POWER -> {
                 weaponLevel++
