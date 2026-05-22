@@ -9,7 +9,12 @@ class BossBullet(var x: Float, var y: Float, private val speed: Float, private v
     var isActive = true
     private val radius = 20f
 
-    private val paint = Paint().apply { style = Paint.Style.FILL }
+    private val paint = Paint().apply {
+        style = Paint.Style.FILL
+        isAntiAlias = true
+        isFilterBitmap = true
+        isDither = true
+    }
 
     fun update() {
         y += speed

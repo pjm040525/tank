@@ -3,6 +3,7 @@ package com.example.tank1916
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
+import android.graphics.Typeface
 
 enum class EffectType {
     EXPLOSION, PICKUP_TEXT, HIT_SPARK
@@ -17,7 +18,11 @@ class Effect(
 ) {
     var lifeTime = maxLifeTime
     var isActive = true
-    private val paint = Paint()
+    private val paint = Paint().apply {
+        isAntiAlias = true
+        isSubpixelText = true
+        typeface = Typeface.create(Typeface.SANS_SERIF, Typeface.BOLD)
+    }
 
     fun update() {
         lifeTime--

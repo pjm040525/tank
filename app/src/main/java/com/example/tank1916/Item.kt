@@ -4,6 +4,7 @@ import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.RectF
+import android.graphics.Typeface
 
 enum class ItemType {
     POWER, HEAL
@@ -15,9 +16,17 @@ class Item(var x: Float, var y: Float, val type: ItemType) {
     val speed = 10f
     var isActive = true
 
-    private val paint = Paint().apply { style = Paint.Style.FILL }
+    private val paint = Paint().apply {
+        style = Paint.Style.FILL
+        isAntiAlias = true
+    }
     private val textPaint = Paint().apply {
-        color = Color.WHITE; textSize = 40f; textAlign = Paint.Align.CENTER
+        color = Color.WHITE
+        textSize = 40f
+        textAlign = Paint.Align.CENTER
+        isAntiAlias = true
+        isSubpixelText = true
+        typeface = Typeface.create(Typeface.SANS_SERIF, Typeface.BOLD)
     }
 
     init {

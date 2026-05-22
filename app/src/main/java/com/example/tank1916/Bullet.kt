@@ -12,6 +12,9 @@ class Bullet(var x: Float, var y: Float, private val speed: Float, private val v
     private val paint = Paint().apply {
         color = Color.RED
         style = Paint.Style.FILL
+        isAntiAlias = true
+        isFilterBitmap = true
+        isDither = true
     }
 
     fun update() {

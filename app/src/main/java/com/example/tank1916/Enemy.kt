@@ -1,8 +1,12 @@
 package com.example.tank1916
 
+import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
+import android.graphics.PorterDuff
+import android.graphics.PorterDuffColorFilter
+import android.graphics.Rect
 import android.graphics.RectF
 
 enum class EnemyType {
@@ -17,13 +21,33 @@ class Enemy(var x: Float, var y: Float, val type: EnemyType, val stage: Int = 1)
     var maxHp = 1
     var scoreValue = 100
     var isActive = true
+    var flashTimer = 0
 
     private var angle = 0f
     private val amplitude = 150f
     private val centerX = x
 
-    private val bodyPaint = Paint().apply { style = Paint.Style.FILL }
-    private val detailPaint = Paint().apply { color = Color.BLACK; style = Paint.Style.FILL }
+    private val bodyPaint = Paint().apply {
+        style = Paint.Style.FILL
+        isAntiAlias = true
+        isFilterBitmap = true
+        isDither = true
+    }
+    private val detailPaint = Paint().apply {
+        color = Color.BLACK
+        style = Paint.Style.FILL
+        isAntiAlias = true
+        isFilterBitmap = true
+        isDither = true
+    }
+    private val hpBarBackgroundPaint = Paint().apply {
+        color = Color.RED
+        style = Paint.Style.FILL
+    }
+    private val hpBarForegroundPaint = Paint().apply {
+        color = Color.GREEN
+        style = Paint.Style.FILL
+    }
 
     init {
         when (type) {
@@ -60,6 +84,7 @@ class Enemy(var x: Float, var y: Float, val type: EnemyType, val stage: Int = 1)
             angle += 0.1f
             x = centerX + Math.sin(angle.toDouble()).toFloat() * amplitude
         }
+        if (flashTimer > 0) flashTimer--
     }
 
     fun takeDamage() {
@@ -68,13 +93,45 @@ class Enemy(var x: Float, var y: Float, val type: EnemyType, val stage: Int = 1)
 
     fun takeDamage(amount: Int) {
         hp -= amount
+        flashTimer = 5
         if (hp <= 0) isActive = false
     }
 
-    fun draw(canvas: Canvas) {
+    fun draw(canvas: Canvas, bmp: Bitmap?) {
         if (!isActive) return
-        canvas.drawRect(x - width / 2, y - height / 2, x + width / 2, y + height / 2, bodyPaint)
-        canvas.drawRect(x - 10f, y, x + 10f, y + height / 2 + 10f, detailPaint)
+
+        if (bmp != null && bmp.width > 0 && bmp.height > 0) {
+            if (flashTimer > 0) {
+                bodyPaint.colorFilter = PorterDuffColorFilter(Color.argb(160, 255, 255, 255), PorterDuff.Mode.SRC_ATOP)
+            } else {
+                bodyPaint.colorFilter = null
+            }
+            
+            val srcRect = Rect(0, 0, bmp.width, bmp.height)
+            val destRect = getBounds()
+            
+            canvas.drawBitmap(bmp, srcRect, destRect, bodyPaint)
+            bodyPaint.colorFilter = null
+        } else {
+            if (flashTimer > 0) {
+                bodyPaint.colorFilter = PorterDuffColorFilter(Color.argb(160, 255, 255, 255), PorterDuff.Mode.SRC_ATOP)
+            } else {
+                bodyPaint.colorFilter = null
+            }
+            canvas.drawRect(x - width / 2, y - height / 2, x + width / 2, y + height / 2, bodyPaint)
+            canvas.drawRect(x - 10f, y, x + 10f, y + height / 2 + 10f, detailPaint)
+            bodyPaint.colorFilter = null
+        }
+
+        if (type == EnemyType.STRONG && hp < maxHp) {
+            val barW = width * 0.7f
+            val barH = 10f
+            val barX = x - barW / 2
+            val barY = y - height / 2 - 15f
+            
+            canvas.drawRect(barX, barY, barX + barW, barY + barH, hpBarBackgroundPaint)
+            canvas.drawRect(barX, barY, barX + barW * (hp.toFloat() / maxHp), barY + barH, hpBarForegroundPaint)
+        }
     }
 
     fun isOffScreen(screenHeight: Int): Boolean = y > screenHeight + height

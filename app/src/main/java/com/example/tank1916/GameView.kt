@@ -31,6 +31,8 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback 
     private val paint = Paint().apply {
         isAntiAlias = true
         isFilterBitmap = true
+        isDither = true
+        isSubpixelText = true
     }
 
     // Interactive Pressed State Tracker
@@ -51,6 +53,7 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback 
     // Reusable paths for camo drawing
     private val camoPath1 = Path()
     private val camoPath2 = Path()
+    private val heartPath = Path()
 
     // Grain drawing configuration (to avoid allocations in onDraw)
     private val grainCount = 12
@@ -94,6 +97,11 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback 
     private var tank2TurretBmp: Bitmap? = null
     private var tank2BarrelBmp: Bitmap? = null
     private var tank3BodyBmp: Bitmap? = null
+
+    private var enemyBasicBmp: Bitmap? = null
+    private var enemyFastBmp: Bitmap? = null
+    private var enemyStrongBmp: Bitmap? = null
+    private var enemyZigzagBmp: Bitmap? = null
     
     private val treadMarks = mutableListOf<TreadMark>()
     private var treadSpawnTimer = 0
@@ -101,8 +109,21 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback 
     private var playerHp = 3
     private val maxHp = 3
     private var score = 0
+        set(value) {
+            field = value
+            if (value > bestScore) {
+                bestScore = value
+                saveBestScore()
+            }
+        }
     private var bestScore = 0 
-    private var gameState = GameState.TITLE 
+    private var gameState = GameState.TITLE
+        set(value) {
+            field = value
+            if (value == GameState.GAME_OVER || value == GameState.STAGE_CLEAR || value == GameState.FINAL_CLEAR) {
+                saveBestScore()
+            }
+        }
     private var weaponLevel = 1 
     private var currentStage = 1 
 
@@ -162,6 +183,11 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback 
             tank2TurretBmp = BitmapFactory.decodeResource(resources, R.drawable.tank2_turret)
             tank2BarrelBmp = BitmapFactory.decodeResource(resources, R.drawable.tank2_barrel)
             tank3BodyBmp = BitmapFactory.decodeResource(resources, R.drawable.tank3_body)
+
+            enemyBasicBmp = BitmapFactory.decodeResource(resources, R.drawable.enemy_basic)
+            enemyFastBmp = BitmapFactory.decodeResource(resources, R.drawable.enemy_fast)
+            enemyStrongBmp = BitmapFactory.decodeResource(resources, R.drawable.enemy_strong)
+            enemyZigzagBmp = BitmapFactory.decodeResource(resources, R.drawable.enemy_zigzag)
         } catch (e: Exception) {
             e.printStackTrace()
         }
@@ -304,72 +330,7 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback 
         canvas.drawRoundRect(statusBatLevelRect, 3f, 3f, paint)
     }
 
-    private fun drawDesertBarrel(canvas: Canvas, rect: RectF) {
-        canvas.save()
-        canvas.clipRect(rect)
-
-        // Fill sand-colored base
-        paint.color = 0xFFE6C280.toInt()
-        paint.style = Paint.Style.FILL
-        canvas.drawRect(rect, paint)
-
-        // Camo pattern 1 (Earthy brown)
-        camoPath1.reset()
-        camoPath1.moveTo(rect.left, rect.top + rect.height() * 0.2f)
-        camoPath1.cubicTo(
-            rect.left + rect.width() * 0.4f, rect.top + rect.height() * 0.1f,
-            rect.left + rect.width() * 0.6f, rect.top + rect.height() * 0.4f,
-            rect.right, rect.top + rect.height() * 0.3f
-        )
-        camoPath1.lineTo(rect.right, rect.top)
-        camoPath1.lineTo(rect.left, rect.top)
-        camoPath1.close()
-        paint.color = 0xFFA67C52.toInt()
-        canvas.drawPath(camoPath1, paint)
-
-        // Camo pattern 2 (Lighter clay/cream)
-        camoPath2.reset()
-        camoPath2.moveTo(rect.left, rect.bottom - rect.height() * 0.3f)
-        camoPath2.cubicTo(
-            rect.left + rect.width() * 0.3f, rect.bottom - rect.height() * 0.4f,
-            rect.left + rect.width() * 0.7f, rect.bottom - rect.height() * 0.1f,
-            rect.right, rect.bottom - rect.height() * 0.2f
-        )
-        camoPath2.lineTo(rect.right, rect.bottom)
-        camoPath2.lineTo(rect.left, rect.bottom)
-        camoPath2.close()
-        paint.color = 0xFFC8B195.toInt()
-        canvas.drawPath(camoPath2, paint)
-
-        // Sand grains
-        paint.color = 0xFF8D6E63.toInt()
-        for (i in 0 until grainCount) {
-            val gx = rect.left + rect.width() * grainX[i]
-            val gy = rect.top + rect.height() * grainY[i]
-            canvas.drawCircle(gx, gy, grainSizes[i], paint)
-        }
-
-        // Hairline cracks
-        paint.color = 0xFF5D4037.toInt()
-        paint.style = Paint.Style.STROKE
-        paint.strokeWidth = 1.5f
-        
-        // Crack 1
-        canvas.drawLine(
-            rect.left + rect.width() * 0.2f, rect.top + rect.height() * 0.4f,
-            rect.left + rect.width() * 0.35f, rect.top + rect.height() * 0.48f,
-            paint
-        )
-        // Crack 2
-        canvas.drawLine(
-            rect.left + rect.width() * 0.8f, rect.top + rect.height() * 0.7f,
-            rect.left + rect.width() * 0.65f, rect.top + rect.height() * 0.75f,
-            paint
-        )
-
-        paint.style = Paint.Style.FILL // restore fill
-        canvas.restore()
-    }
+    // Custom drawDesertBarrel method removed as we draw the actual barrel sprite now.
 
     private fun applyButtonScale(canvas: Canvas, rect: RectF): Boolean {
         if (pressedRect == rect) {
@@ -438,7 +399,6 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback 
                     effects.add(Effect(b.x + random.nextInt(200) - 100f, b.y + random.nextInt(200) - 100f, EffectType.EXPLOSION))
                 }
                 gameState = if (currentStage == 2) GameState.FINAL_CLEAR else GameState.STAGE_CLEAR
-                if (gameState == GameState.FINAL_CLEAR) saveBestScore()
                 boss = null
             }
         }
@@ -578,7 +538,6 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback 
                     effects.add(Effect(b.x + random.nextInt(200) - 100f, b.y + random.nextInt(200) - 100f, EffectType.EXPLOSION))
                 }
                 gameState = if (currentStage == 2) GameState.FINAL_CLEAR else GameState.STAGE_CLEAR
-                if (gameState == GameState.FINAL_CLEAR) saveBestScore()
                 boss = null
             }
         }
@@ -841,7 +800,15 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback 
         }
 
         bullets.forEach { it.draw(canvas) }
-        enemies.forEach { it.draw(canvas) }
+        enemies.forEach { enemy ->
+            val bmp = when (enemy.type) {
+                EnemyType.BASIC -> enemyBasicBmp
+                EnemyType.FAST -> enemyFastBmp
+                EnemyType.STRONG -> enemyStrongBmp
+                EnemyType.ZIGZAG -> enemyZigzagBmp
+            }
+            enemy.draw(canvas, bmp)
+        }
         bossBullets.forEach { it.draw(canvas) }
         boss?.draw(canvas)
         items.forEach { it.draw(canvas) }
@@ -899,17 +866,21 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback 
                                 val bodyRectF = RectF(playerX - bodyW/2, playerY - bodyH/2, playerX + bodyW/2, playerY + bodyH/2)
                                 canvas.drawBitmap(bodyBmp, srcRect, bodyRectF, paint)
 
-                                // Draw barrel
-                                val barrelW = bodyW * 0.22f
-                                val barrelH = barrelW * (barrelBmp.height.toFloat() / barrelBmp.width.toFloat())
-                                val barrelRectF = RectF(playerX - barrelW/2, playerY - bodyH/2 - barrelH/2, playerX + barrelW/2, playerY - bodyH/4)
-                                drawDesertBarrel(canvas, barrelRectF)
+                                val scale = bodyW / 48f
+                                val turretCenterY = playerY - 8f * scale
 
-                                // Draw turret
-                                val turretW = bodyW * 0.55f
-                                val turretH = turretW * (turretBmp.height.toFloat() / turretBmp.width.toFloat())
-                                val turretRectF = RectF(playerX - turretW/2, playerY - turretH/2, playerX + turretW/2, playerY + turretH/2)
+                                // Draw barrel (centered, first so turret covers its base)
+                                val barrelW = 8f * scale
+                                val barrelH = 36f * scale
+                                val barrelRectF = RectF(playerX - barrelW/2, turretCenterY - barrelH, playerX + barrelW/2, turretCenterY)
+                                canvas.drawBitmap(barrelBmp, android.graphics.Rect(0, 1, barrelBmp.width, 10), barrelRectF, paint)
+
+                                // Draw turret (centered, overlaying the barrel base)
+                                val turretW = 26f * scale
+                                val turretH = 37f * scale
+                                val turretRectF = RectF(playerX - turretW/2, turretCenterY - turretH/2, playerX + turretW/2, turretCenterY + turretH/2)
                                 canvas.drawBitmap(turretBmp, null, turretRectF, paint)
+                                
                                 drawnWithSprite = true
                             }
                         }
@@ -980,8 +951,11 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback 
         canvas.drawRect(0f, 90f, width.toFloat(), 300f, paint)
 
         // Draw Row 1: HP, STAGE, Score (y = 150f - shifted down by 70f)
-        paint.color = Color.WHITE; paint.textSize = 45f; paint.textAlign = Paint.Align.LEFT
+        paint.color = Color.WHITE
+        paint.textSize = 48f
+        paint.textAlign = Paint.Align.LEFT
         paint.isFakeBoldText = true
+        paint.typeface = Typeface.create(Typeface.SANS_SERIF, Typeface.BOLD)
         canvas.drawText("HP: ", 50f, 150f, paint)
         val hpTextWidth = paint.measureText("HP: ")
         
@@ -1003,15 +977,18 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback 
         
         paint.color = Color.WHITE
         paint.textAlign = Paint.Align.CENTER
-        canvas.drawText("STAGE $currentStage", width / 2f, 150f, paint)
+        paint.typeface = Typeface.create(Typeface.SANS_SERIF, Typeface.BOLD)
+        canvas.drawText("STAGE $currentStage", Math.round(width / 2f).toFloat(), 150f, paint)
         
         paint.textAlign = Paint.Align.RIGHT
-        canvas.drawText("Score: $score", width - 160f, 150f, paint)
+        paint.typeface = Typeface.create(Typeface.SANS_SERIF, Typeface.BOLD)
+        canvas.drawText("Score: $score", Math.round(width - 160f).toFloat(), 150f, paint)
 
         // Draw Row 2: PWR (y = 210f - shifted down by 70f) in Gold
         paint.color = Color.rgb(255, 215, 0) // Gold
-        paint.textSize = 40f
+        paint.textSize = 44f
         paint.textAlign = Paint.Align.LEFT
+        paint.typeface = Typeface.create(Typeface.SANS_SERIF, Typeface.BOLD)
         canvas.drawText("PWR: $weaponLevel", 50f, 210f, paint)
 
         // --- Pause Button Configuration and Draw (Vertical align with Row 1) ---
@@ -1057,20 +1034,21 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback 
             paint.color = Color.RED
             val hpRatio = b.hp.toFloat() / b.maxHp
             canvas.drawRect(barX, barY, barX + barWidth * hpRatio, barY + 25f, paint)
-            paint.color = Color.WHITE; paint.textSize = 24f; paint.textAlign = Paint.Align.CENTER
+            paint.color = Color.WHITE; paint.textSize = 30f; paint.textAlign = Paint.Align.CENTER
             paint.isFakeBoldText = true
-            canvas.drawText("BOSS: ${b.bossName}", width / 2f, barY + 20f, paint)
+            paint.typeface = Typeface.create(Typeface.SANS_SERIF, Typeface.BOLD)
+            canvas.drawText("BOSS: ${b.bossName}", Math.round(width / 2f).toFloat(), Math.round(barY + 20f).toFloat(), paint)
 
             if (b.y < 300f) {
                 val blink = (System.currentTimeMillis() / 250) % 2 == 0L
                 if (blink) {
                     paint.color = Color.RED
-                    paint.textSize = 80f
+                    paint.textSize = 90f
                     paint.textAlign = Paint.Align.CENTER
                     paint.isFakeBoldText = true
-                    canvas.drawText("⚠️ WARNING ⚠️", width / 2f, height / 3f, paint)
-                    paint.textSize = 40f
-                    canvas.drawText("BOSS APPROACHING", width / 2f, height / 3f + 60f, paint)
+                    canvas.drawText("⚠️ WARNING ⚠️", Math.round(width / 2f).toFloat(), Math.round(height / 3f).toFloat(), paint)
+                    paint.textSize = 46f
+                    canvas.drawText("BOSS APPROACHING", Math.round(width / 2f).toFloat(), Math.round(height / 3f + 60f).toFloat(), paint)
                 }
             }
         }
@@ -1098,11 +1076,11 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback 
             paint.style = Paint.Style.FILL
             
             paint.color = Color.WHITE
-            paint.textSize = 28f
+            paint.textSize = 32f
             paint.textAlign = Paint.Align.CENTER
             paint.isFakeBoldText = true
             val textY = sBtnY - (paint.descent() + paint.ascent()) / 2f
-            canvas.drawText("$selectedSkillName READY", sBtnX, textY, paint)
+            canvas.drawText("$selectedSkillName READY", Math.round(sBtnX).toFloat(), Math.round(textY).toFloat(), paint)
         } else {
             paint.color = Color.argb(140, 50, 50, 50)
             paint.style = Paint.Style.FILL
@@ -1115,11 +1093,11 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback 
             paint.style = Paint.Style.FILL
             
             paint.color = Color.rgb(180, 180, 180)
-            paint.textSize = 26f
+            paint.textSize = 30f
             paint.textAlign = Paint.Align.CENTER
             paint.isFakeBoldText = false
             val textY = sBtnY - (paint.descent() + paint.ascent()) / 2f
-            canvas.drawText("$selectedSkillName ${skillGauge}%", sBtnX, textY, paint)
+            canvas.drawText("$selectedSkillName ${skillGauge}%", Math.round(sBtnX).toFloat(), Math.round(textY).toFloat(), paint)
         }
 
         if (skillScaled) {
@@ -1151,26 +1129,42 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback 
     private fun drawGameOverScreen(canvas: Canvas) {
         paint.color = Color.argb(180, 0, 0, 0); canvas.drawRect(0f, 0f, width.toFloat(), height.toFloat(), paint)
         paint.textAlign = Paint.Align.CENTER; paint.color = Color.RED; paint.textSize = 120f
-        canvas.drawText("GAME OVER", width / 2f, height / 2f - 50f, paint)
+        paint.isFakeBoldText = true
+        paint.typeface = Typeface.create(Typeface.SANS_SERIF, Typeface.BOLD)
+        canvas.drawText("GAME OVER", Math.round(width / 2f).toFloat(), Math.round(height / 2f - 50f).toFloat(), paint)
         paint.color = Color.WHITE; paint.textSize = 80f
-        canvas.drawText("Final Score: $score", width / 2f, height / 2f + 80f, paint)
-        paint.textSize = 50f; canvas.drawText("Touch to Restart", width / 2f, height / 2f + 200f, paint)
+        canvas.drawText("Final Score: $score", Math.round(width / 2f).toFloat(), Math.round(height / 2f + 80f).toFloat(), paint)
+        paint.textSize = 50f
+        paint.isFakeBoldText = false
+        paint.typeface = Typeface.create(Typeface.SANS_SERIF, Typeface.NORMAL)
+        canvas.drawText("Touch to Restart", Math.round(width / 2f).toFloat(), Math.round(height / 2f + 200f).toFloat(), paint)
     }
 
     private fun drawStageClearScreen(canvas: Canvas) {
         paint.color = Color.argb(180, 0, 0, 100); canvas.drawRect(0f, 0f, width.toFloat(), height.toFloat(), paint)
         paint.textAlign = Paint.Align.CENTER; paint.color = Color.GREEN; paint.textSize = 120f
+        paint.isFakeBoldText = true
+        paint.typeface = Typeface.create(Typeface.SANS_SERIF, Typeface.BOLD)
         val clearText = if (currentStage == 2) "FINAL CLEAR!" else "STAGE CLEAR!"
-        canvas.drawText(clearText, width / 2f, height / 2f - 50f, paint)
+        canvas.drawText(clearText, Math.round(width / 2f).toFloat(), Math.round(height / 2f - 50f).toFloat(), paint)
         paint.color = Color.WHITE; paint.textSize = 80f
-        canvas.drawText("Score: $score", width / 2f, height / 2f + 80f, paint)
+        canvas.drawText("Score: $score", Math.round(width / 2f).toFloat(), Math.round(height / 2f + 80f).toFloat(), paint)
         paint.textSize = 50f
         val nextText = if (currentStage == 2) "Touch to Restart" else "Touch to Next Stage"
-        canvas.drawText(nextText, width / 2f, height / 2f + 200f, paint)
+        paint.isFakeBoldText = false
+        paint.typeface = Typeface.create(Typeface.SANS_SERIF, Typeface.NORMAL)
+        canvas.drawText(nextText, Math.round(width / 2f).toFloat(), Math.round(height / 2f + 200f).toFloat(), paint)
     }
 
     private fun drawTitleScreen(canvas: Canvas) {
         drawPremiumBackground(canvas)
+
+        val titleY = Math.round(height * 0.22f).toFloat()
+        val subtitleY = Math.round(height * 0.28f).toFloat()
+        val subtitle2Y = Math.round(height * 0.31f).toFloat()
+        val bestScoreY = Math.round(height * 0.36f).toFloat()
+        val statusSkinY = Math.round(height * 0.41f).toFloat()
+        val statusSkillY = Math.round(height * 0.46f).toFloat()
 
         // Title: "1916"
         paint.color = Color.RED
@@ -1179,7 +1173,7 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback 
         paint.isFakeBoldText = true
         paint.typeface = Typeface.create(Typeface.MONOSPACE, Typeface.BOLD)
         paint.setShadowLayer(25f, 0f, 0f, Color.RED)
-        canvas.drawText("1916", width / 2f, height * 0.22f, paint)
+        canvas.drawText("1916", Math.round(width / 2f).toFloat(), titleY, paint)
         paint.clearShadowLayer()
 
         // Subtitle: "Tank Arcade Shooter"
@@ -1187,27 +1181,27 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback 
         paint.textSize = 55f
         paint.isFakeBoldText = true
         paint.typeface = Typeface.create(Typeface.SANS_SERIF, Typeface.BOLD)
-        canvas.drawText("Tank Arcade Shooter", width / 2f, height * 0.28f, paint)
+        canvas.drawText("Tank Arcade Shooter", Math.round(width / 2f).toFloat(), subtitleY, paint)
 
         // Subtitle 2: "A New Gravity Experience"
         paint.color = Color.rgb(180, 200, 220)
         paint.textSize = 34f
         paint.isFakeBoldText = false
         paint.typeface = Typeface.create(Typeface.SANS_SERIF, Typeface.NORMAL)
-        canvas.drawText("A New Gravity Experience", width / 2f, height * 0.31f, paint)
+        canvas.drawText("A New Gravity Experience", Math.round(width / 2f).toFloat(), subtitle2Y, paint)
 
         // Structured vertical block for status display
         paint.typeface = Typeface.create(Typeface.SANS_SERIF, Typeface.BOLD)
-        paint.textSize = 38f
+        paint.textSize = 44f
         
         paint.color = Color.rgb(255, 215, 0)
-        canvas.drawText("🏆 BEST SCORE: $bestScore", width / 2f, height * 0.36f, paint)
+        canvas.drawText("🏆 BEST SCORE: $bestScore", Math.round(width / 2f).toFloat(), bestScoreY, paint)
         
         paint.color = Color.rgb(0, 230, 255)
-        canvas.drawText("🛡️ SKIN: $selectedSkinName", width / 2f, height * 0.41f, paint)
+        canvas.drawText("🛡️ SKIN: $selectedSkinName", Math.round(width / 2f).toFloat(), statusSkinY, paint)
         
         paint.color = Color.rgb(255, 180, 0)
-        canvas.drawText("⚡ SKILL: $selectedSkillName", width / 2f, height * 0.46f, paint)
+        canvas.drawText("⚡ SKILL: $selectedSkillName", Math.round(width / 2f).toFloat(), statusSkillY, paint)
 
         // Button dimensions
         val btnWidth = 450f
@@ -1316,7 +1310,7 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback 
         paint.textAlign = Paint.Align.CENTER
         paint.isFakeBoldText = true
         paint.typeface = Typeface.create(Typeface.SANS_SERIF, Typeface.BOLD)
-        canvas.drawText("SELECT TANK", width / 2f, height * 0.15f, paint)
+        canvas.drawText("SELECT TANK", Math.round(width / 2f).toFloat(), Math.round(height * 0.15f).toFloat(), paint)
 
         // Card Configuration
         val cardWidth = width * 0.85f
@@ -1442,17 +1436,21 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback 
                         val bodyRectF = RectF(previewX - bodyW/2, previewY - bodyH/2, previewX + bodyW/2, previewY + bodyH/2)
                         canvas.drawBitmap(bodyBmp, srcRect, bodyRectF, paint)
 
-                        // Draw barrel using custom drawDesertBarrel method
-                        val barrelW = bodyW * 0.22f
-                        val barrelH = barrelW * (barrelBmp.height.toFloat() / barrelBmp.width.toFloat())
-                        val barrelRectF = RectF(previewX - barrelW/2, previewY - bodyH/2 - barrelH/2, previewX + barrelW/2, previewY - bodyH/4)
-                        drawDesertBarrel(canvas, barrelRectF)
+                        val scale = bodyW / 48f
+                        val turretCenterY = previewY - 8f * scale
 
-                        // Draw turret
-                        val turretW = bodyW * 0.55f
-                        val turretH = turretW * (turretBmp.height.toFloat() / turretBmp.width.toFloat())
-                        val turretRectF = RectF(previewX - turretW/2, previewY - turretH/2, previewX + turretW/2, previewY + turretH/2)
+                        // Draw barrel (centered, first so turret covers its base)
+                        val barrelW = 8f * scale
+                        val barrelH = 36f * scale
+                        val barrelRectF = RectF(previewX - barrelW/2, turretCenterY - barrelH, previewX + barrelW/2, turretCenterY)
+                        canvas.drawBitmap(barrelBmp, android.graphics.Rect(0, 1, barrelBmp.width, 10), barrelRectF, paint)
+
+                        // Draw turret (centered, overlaying the barrel base)
+                        val turretW = 26f * scale
+                        val turretH = 37f * scale
+                        val turretRectF = RectF(previewX - turretW/2, turretCenterY - turretH/2, previewX + turretW/2, turretCenterY + turretH/2)
                         canvas.drawBitmap(turretBmp, null, turretRectF, paint)
+                        
                         drawnPreview = true
                     }
                 }
@@ -1488,8 +1486,9 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback 
 
         // Name translation for premium display
         val displayName = when (name) {
-            "DEFAULT" -> "PREVIEW: DEFAULT (Fixed)"
-            "DESERT" -> "PREVIEW: DESSERT (Fixed)"
+            "DEFAULT" -> "PREVIEW: DEFAULT"
+            "DESERT" -> "PREVIEW: DESERT"
+            "HEAVY" -> "PREVIEW: HEAVY"
             else -> name
         }
 
@@ -1498,14 +1497,14 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback 
         paint.textSize = 45f
         paint.isFakeBoldText = true
         paint.typeface = Typeface.create(Typeface.SANS_SERIF, Typeface.BOLD)
-        canvas.drawText(displayName, textStartX, rect.centerY() - 10f, paint)
+        canvas.drawText(displayName, textStartX, Math.round(rect.centerY() - 10f).toFloat(), paint)
 
         // Description
         paint.color = Color.rgb(180, 180, 180)
         paint.textSize = 30f
         paint.isFakeBoldText = false
         paint.typeface = Typeface.create(Typeface.SANS_SERIF, Typeface.NORMAL)
-        canvas.drawText(desc, textStartX, rect.centerY() + 35f, paint)
+        canvas.drawText(desc, textStartX, Math.round(rect.centerY() + 35f).toFloat(), paint)
 
         if (scaled) {
             canvas.restore()
@@ -1521,7 +1520,7 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback 
         paint.textAlign = Paint.Align.CENTER
         paint.isFakeBoldText = true
         paint.typeface = Typeface.create(Typeface.SANS_SERIF, Typeface.BOLD)
-        canvas.drawText("SELECT SKILL", width / 2f, height * 0.15f, paint)
+        canvas.drawText("SELECT SKILL", Math.round(width / 2f).toFloat(), Math.round(height * 0.15f).toFloat(), paint)
 
         // Card Configuration
         val cardWidth = width * 0.85f
@@ -1618,14 +1617,14 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback 
         paint.textSize = 45f
         paint.isFakeBoldText = true
         paint.typeface = Typeface.create(Typeface.SANS_SERIF, Typeface.BOLD)
-        canvas.drawText(name, textStartX, rect.centerY() - 10f, paint)
+        canvas.drawText(name, textStartX, Math.round(rect.centerY() - 10f).toFloat(), paint)
 
         // Description
         paint.color = Color.rgb(180, 180, 180)
         paint.textSize = 30f
         paint.isFakeBoldText = false
         paint.typeface = Typeface.create(Typeface.SANS_SERIF, Typeface.NORMAL)
-        canvas.drawText(desc, textStartX, rect.centerY() + 35f, paint)
+        canvas.drawText(desc, textStartX, Math.round(rect.centerY() + 35f).toFloat(), paint)
 
         if (scaled) {
             canvas.restore()
@@ -1639,10 +1638,12 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback 
         paint.color = Color.WHITE
         paint.textSize = 120f
         paint.isFakeBoldText = true
-        canvas.drawText("PAUSED", width / 2f, height / 2f - 50f, paint)
+        paint.typeface = Typeface.create(Typeface.SANS_SERIF, Typeface.BOLD)
+        canvas.drawText("PAUSED", Math.round(width / 2f).toFloat(), Math.round(height / 2f - 50f).toFloat(), paint)
         paint.textSize = 50f
         paint.isFakeBoldText = false
-        canvas.drawText("Touch to Resume", width / 2f, height / 2f + 50f, paint)
+        paint.typeface = Typeface.create(Typeface.SANS_SERIF, Typeface.NORMAL)
+        canvas.drawText("Touch to Resume", Math.round(width / 2f).toFloat(), Math.round(height / 2f + 50f).toFloat(), paint)
     }
 
     override fun onTouchEvent(event: MotionEvent): Boolean {
@@ -1803,11 +1804,8 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback 
     }
 
     private fun saveBestScore() {
-        if (score > bestScore) {
-            bestScore = score
-            val prefs = context.getSharedPreferences("TankGamePrefs", Context.MODE_PRIVATE)
-            prefs.edit().putInt("BestScore", bestScore).apply()
-        }
+        val prefs = context.getSharedPreferences("TankGamePrefs", Context.MODE_PRIVATE)
+        prefs.edit().putInt("BestScore", bestScore).apply()
     }
 
     fun pause() {
@@ -1815,6 +1813,7 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback 
             if (gameState == GameState.PLAYING) {
                 gameState = GameState.PAUSED
             }
+            saveBestScore()
         }
     }
 
@@ -1825,14 +1824,14 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback 
     }
 
     private fun drawHeart(canvas: Canvas, x: Float, y: Float, size: Float, paint: Paint) {
-        val path = Path()
+        heartPath.reset()
         val w = size
         val h = size
-        path.moveTo(x, y - h * 0.25f)
-        path.cubicTo(x - w * 0.5f, y - h * 0.75f, x - w, y - h * 0.1f, x, y + h * 0.5f)
-        path.cubicTo(x + w, y - h * 0.1f, x + w * 0.5f, y - h * 0.75f, x, y - h * 0.25f)
-        path.close()
-        canvas.drawPath(path, paint)
+        heartPath.moveTo(x, y - h * 0.25f)
+        heartPath.cubicTo(x - w * 0.5f, y - h * 0.75f, x - w, y - h * 0.1f, x, y + h * 0.5f)
+        heartPath.cubicTo(x + w, y - h * 0.1f, x + w * 0.5f, y - h * 0.75f, x, y - h * 0.25f)
+        heartPath.close()
+        canvas.drawPath(heartPath, paint)
     }
 }
 

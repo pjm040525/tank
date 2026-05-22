@@ -24,6 +24,18 @@ class Boss(var x: Float, var y: Float, val stage: Int = 1) {
 
     private val bodyPaint = Paint().apply { 
         color = if (stage == 1) Color.rgb(85, 107, 47) else Color.rgb(139, 69, 19)
+        isAntiAlias = true
+    }
+
+    private val corePaint = Paint().apply {
+        style = Paint.Style.FILL
+        isAntiAlias = true
+    }
+
+    private val barrelPaint = Paint().apply {
+        color = Color.DKGRAY
+        style = Paint.Style.FILL
+        isAntiAlias = true
     }
 
     fun update(screenWidth: Float, bossBullets: MutableList<BossBullet>) {
@@ -104,30 +116,64 @@ class Boss(var x: Float, var y: Float, val stage: Int = 1) {
         bodyPaint.color = if (stage == 1) Color.rgb(55, 77, 17) else Color.rgb(99, 39, 0)
         canvas.drawRect(x - width / 2, y - height / 2, x + width / 2, y + height / 2, bodyPaint)
         
-        // 2. Inner armor plates
+        // 2. Inner armor plates & decorative details (Caterpillar track previews)
         bodyPaint.color = if (stage == 1) Color.rgb(85, 107, 47) else Color.rgb(139, 69, 19)
         canvas.drawRect(x - width * 0.4f, y - height * 0.4f, x + width * 0.4f, y + height * 0.4f, bodyPaint)
         
-        // 3. Decorative glowing panel or emblem (Red/Yellow core)
-        val corePaint = Paint().apply {
-            color = if (stage == 1) Color.RED else Color.YELLOW
-            style = Paint.Style.FILL
-        }
+        // Caterpillars details
+        bodyPaint.color = Color.rgb(30, 30, 30)
+        canvas.drawRect(x - width / 2 - 10f, y - height / 2 + 30f, x - width / 2 + 10f, y + height / 2 - 30f, bodyPaint)
+        canvas.drawRect(x + width / 2 - 10f, y - height / 2 + 30f, x + width / 2 + 10f, y + height / 2 - 30f, bodyPaint)
+
+        // Glowing emblem / Core
+        corePaint.color = if (stage == 1) Color.RED else Color.YELLOW
         canvas.drawCircle(x, y, 40f, corePaint)
         corePaint.color = Color.WHITE
         canvas.drawCircle(x, y, 20f, corePaint)
         
-        // 4. Gun barrels/turrets at the bottom
-        val barrelPaint = Paint().apply {
-            color = Color.DKGRAY
+        // 3. Turrets (Base of the guns)
+        val turretPaint = Paint().apply {
+            color = if (stage == 1) Color.rgb(105, 127, 67) else Color.rgb(169, 99, 49)
             style = Paint.Style.FILL
+            isAntiAlias = true
         }
-        // Center barrel
-        canvas.drawRect(x - 20f, y + height / 2, x + 20f, y + height / 2 + 50f, barrelPaint)
-        // Left wing barrel
-        canvas.drawRect(x - width / 3f - 15f, y + height / 2, x - width / 3f + 15f, y + height / 2 + 40f, barrelPaint)
-        // Right wing barrel
-        canvas.drawRect(x + width / 3f - 15f, y + height / 2, x + width / 3f + 15f, y + height / 2 + 40f, barrelPaint)
+        // Center main turret base
+        canvas.drawRect(x - 50f, y + height / 2 - 35f, x + 50f, y + height / 2, turretPaint)
+        // Left auxiliary turret base
+        canvas.drawRect(x - width / 3f - 30f, y + height / 2 - 25f, x - width / 3f + 30f, y + height / 2, turretPaint)
+        // Right auxiliary turret base
+        canvas.drawRect(x + width / 3f - 30f, y + height / 2 - 25f, x + width / 3f + 30f, y + height / 2, turretPaint)
+        
+        // 4. Gun barrels (Highly visible extended dark barrels)
+        barrelPaint.color = Color.rgb(35, 35, 35) // High-contrast dark gray
+        
+        // Center main barrel (Extended to 95f)
+        val centerBarrelY1 = y + height / 2
+        val centerBarrelY2 = y + height / 2 + 95f
+        canvas.drawRect(x - 25f, centerBarrelY1, x + 25f, centerBarrelY2, barrelPaint)
+        
+        // Left wing barrel (Extended to 75f)
+        val leftBarrelY1 = y + height / 2
+        val leftBarrelY2 = y + height / 2 + 75f
+        canvas.drawRect(x - width / 3f - 18f, leftBarrelY1, x - width / 3f + 18f, leftBarrelY2, barrelPaint)
+        
+        // Right wing barrel (Extended to 75f)
+        val rightBarrelY1 = y + height / 2
+        val rightBarrelY2 = y + height / 2 + 75f
+        canvas.drawRect(x + width / 3f - 18f, rightBarrelY1, x + width / 3f + 18f, rightBarrelY2, barrelPaint)
+        
+        // 5. Muzzles (High-contrast bright caps at barrel tips)
+        val muzzlePaint = Paint().apply {
+            color = if (stage == 1) Color.RED else Color.YELLOW
+            style = Paint.Style.FILL
+            isAntiAlias = true
+        }
+        // Center muzzle
+        canvas.drawRect(x - 28f, centerBarrelY2, x + 28f, centerBarrelY2 + 15f, muzzlePaint)
+        // Left muzzle
+        canvas.drawRect(x - width / 3f - 20f, leftBarrelY2, x - width / 3f + 20f, leftBarrelY2 + 12f, muzzlePaint)
+        // Right muzzle
+        canvas.drawRect(x + width / 3f - 20f, rightBarrelY2, x + width / 3f + 20f, rightBarrelY2 + 12f, muzzlePaint)
     }
 
     fun getBounds(): RectF = RectF(x - width / 2, y - height / 2, x + width / 2, y + height / 2)
