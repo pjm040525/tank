@@ -10,6 +10,10 @@ import android.graphics.Path
 import android.graphics.PorterDuff
 import android.graphics.PorterDuffColorFilter
 import android.graphics.RectF
+import android.graphics.RadialGradient
+import android.graphics.LinearGradient
+import android.graphics.Shader
+import android.graphics.Typeface
 import android.media.AudioAttributes
 import android.media.SoundPool
 import android.view.MotionEvent
@@ -24,7 +28,35 @@ enum class GameState {
 class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback {
 
     private var thread: MainThread? = null
-    private val paint = Paint()
+    private val paint = Paint().apply {
+        isAntiAlias = true
+        isFilterBitmap = true
+    }
+
+    // Interactive Pressed State Tracker
+    private var pressedRect: RectF? = null
+
+    // Cached Gradients
+    private var bgRadialGradient: RadialGradient? = null
+    private var startButtonGradient: LinearGradient? = null
+
+    // Reusable RectFs for status bar rendering to avoid allocations in draw call
+    private val statusNotchRect = RectF()
+    private val statusBatRect = RectF()
+    private val statusBatTipRect = RectF()
+    private val statusBatLevelRect = RectF()
+    private val statusWifiArc1 = RectF()
+    private val statusWifiArc2 = RectF()
+
+    // Reusable paths for camo drawing
+    private val camoPath1 = Path()
+    private val camoPath2 = Path()
+
+    // Grain drawing configuration (to avoid allocations in onDraw)
+    private val grainCount = 12
+    private val grainX = floatArrayOf(0.2f, 0.5f, 0.8f, 0.3f, 0.7f, 0.1f, 0.9f, 0.4f, 0.6f, 0.25f, 0.75f, 0.5f)
+    private val grainY = floatArrayOf(0.12f, 0.28f, 0.35f, 0.45f, 0.52f, 0.68f, 0.72f, 0.83f, 0.91f, 0.58f, 0.18f, 0.78f)
+    private val grainSizes = floatArrayOf(1.5f, 2f, 1.2f, 2.2f, 1.5f, 1.8f, 2.5f, 1.3f, 2f, 1.6f, 2.1f, 1.4f)
     private var soundPool: SoundPool? = null
     private var shootSoundId: Int = 0
     private var boomSoundId: Int = 0
@@ -175,6 +207,205 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback 
         }
         soundPool?.release()
         soundPool = null
+    }
+
+    override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
+        super.onSizeChanged(w, h, oldw, oldh)
+        initGradients(w, h)
+    }
+
+    private fun initGradients(w: Int, h: Int) {
+        if (w <= 0 || h <= 0) return
+        val radius = Math.max(w, h) * 0.9f
+        val colors = intArrayOf(Color.argb(0, 0, 191, 255), Color.argb(40, 0, 150, 255), Color.argb(90, 0, 80, 200))
+        val stops = floatArrayOf(0f, 0.6f, 1.0f)
+        bgRadialGradient = RadialGradient(
+            w / 2f, h / 2f, radius,
+            colors, stops, Shader.TileMode.CLAMP
+        )
+        
+        val startY = h * 0.55f
+        startButtonGradient = LinearGradient(
+            w / 2f - 225f, startY - 60f,
+            w / 2f - 225f, startY + 60f,
+            Color.rgb(46, 204, 113), Color.rgb(24, 106, 59),
+            Shader.TileMode.CLAMP
+        )
+    }
+
+    private fun drawPremiumBackground(canvas: Canvas) {
+        paint.color = 0xFF1E2228.toInt()
+        paint.style = Paint.Style.FILL
+        canvas.drawRect(0f, 0f, width.toFloat(), height.toFloat(), paint)
+
+        val gradient = bgRadialGradient
+        if (gradient != null) {
+            paint.shader = gradient
+            canvas.drawRect(0f, 0f, width.toFloat(), height.toFloat(), paint)
+            paint.shader = null
+        }
+    }
+
+    private fun drawSimulatedStatusBar(canvas: Canvas) {
+        // Semi-transparent dark bar at the top
+        paint.color = Color.argb(160, 26, 30, 36)
+        paint.style = Paint.Style.FILL
+        canvas.drawRect(0f, 0f, width.toFloat(), 90f, paint)
+
+        // Center rounded notch camera cutout
+        paint.color = Color.BLACK
+        statusNotchRect.set(width / 2f - 110f, -20f, width / 2f + 110f, 45f)
+        canvas.drawRoundRect(statusNotchRect, 25f, 25f, paint)
+
+        // Draw Clock (6:43) on the left
+        paint.color = Color.WHITE
+        paint.textSize = 34f
+        paint.textAlign = Paint.Align.LEFT
+        paint.isFakeBoldText = true
+        paint.typeface = Typeface.create(Typeface.SANS_SERIF, Typeface.BOLD)
+        canvas.drawText("6:43", 55f, 57f, paint)
+
+        // Draw standard status icons (battery, wifi, signal)
+        // Signal (Cellular)
+        val sigLeft = width - 210f
+        paint.style = Paint.Style.FILL
+        for (i in 0 until 4) {
+            val barH = 10f + i * 5f
+            val x = sigLeft + i * 9f
+            canvas.drawRect(x, 57f - barH, x + 5f, 57f, paint)
+        }
+
+        // Wifi
+        val wifiCenterX = width - 150f
+        val wifiCenterY = 50f
+        paint.style = Paint.Style.STROKE
+        paint.strokeWidth = 3.5f
+        statusWifiArc1.set(wifiCenterX - 12f, wifiCenterY - 12f, wifiCenterX + 12f, wifiCenterY + 12f)
+        canvas.drawArc(statusWifiArc1, -140f, 100f, false, paint)
+        statusWifiArc2.set(wifiCenterX - 22f, wifiCenterY - 22f, wifiCenterX + 22f, wifiCenterY + 22f)
+        canvas.drawArc(statusWifiArc2, -140f, 100f, false, paint)
+        paint.style = Paint.Style.FILL
+        canvas.drawCircle(wifiCenterX, wifiCenterY + 4f, 4f, paint)
+
+        // Battery
+        val batLeft = width - 100f
+        val batTop = 33f
+        val batWidth = 46f
+        val batHeight = 24f
+        statusBatRect.set(batLeft, batTop, batLeft + batWidth, batTop + batHeight)
+        statusBatTipRect.set(batLeft + batWidth, batTop + 7f, batLeft + batWidth + 4f, batTop + batHeight - 7f)
+        statusBatLevelRect.set(batLeft + 4f, batTop + 4f, batLeft + 4f + (batWidth - 8f) * 0.8f, batTop + batHeight - 4f)
+
+        paint.style = Paint.Style.STROKE
+        paint.strokeWidth = 3f
+        canvas.drawRoundRect(statusBatRect, 5f, 5f, paint)
+        paint.style = Paint.Style.FILL
+        canvas.drawRoundRect(statusBatTipRect, 2f, 2f, paint)
+        canvas.drawRoundRect(statusBatLevelRect, 3f, 3f, paint)
+    }
+
+    private fun drawDesertBarrel(canvas: Canvas, rect: RectF) {
+        canvas.save()
+        canvas.clipRect(rect)
+
+        // Fill sand-colored base
+        paint.color = 0xFFE6C280.toInt()
+        paint.style = Paint.Style.FILL
+        canvas.drawRect(rect, paint)
+
+        // Camo pattern 1 (Earthy brown)
+        camoPath1.reset()
+        camoPath1.moveTo(rect.left, rect.top + rect.height() * 0.2f)
+        camoPath1.cubicTo(
+            rect.left + rect.width() * 0.4f, rect.top + rect.height() * 0.1f,
+            rect.left + rect.width() * 0.6f, rect.top + rect.height() * 0.4f,
+            rect.right, rect.top + rect.height() * 0.3f
+        )
+        camoPath1.lineTo(rect.right, rect.top)
+        camoPath1.lineTo(rect.left, rect.top)
+        camoPath1.close()
+        paint.color = 0xFFA67C52.toInt()
+        canvas.drawPath(camoPath1, paint)
+
+        // Camo pattern 2 (Lighter clay/cream)
+        camoPath2.reset()
+        camoPath2.moveTo(rect.left, rect.bottom - rect.height() * 0.3f)
+        camoPath2.cubicTo(
+            rect.left + rect.width() * 0.3f, rect.bottom - rect.height() * 0.4f,
+            rect.left + rect.width() * 0.7f, rect.bottom - rect.height() * 0.1f,
+            rect.right, rect.bottom - rect.height() * 0.2f
+        )
+        camoPath2.lineTo(rect.right, rect.bottom)
+        camoPath2.lineTo(rect.left, rect.bottom)
+        camoPath2.close()
+        paint.color = 0xFFC8B195.toInt()
+        canvas.drawPath(camoPath2, paint)
+
+        // Sand grains
+        paint.color = 0xFF8D6E63.toInt()
+        for (i in 0 until grainCount) {
+            val gx = rect.left + rect.width() * grainX[i]
+            val gy = rect.top + rect.height() * grainY[i]
+            canvas.drawCircle(gx, gy, grainSizes[i], paint)
+        }
+
+        // Hairline cracks
+        paint.color = 0xFF5D4037.toInt()
+        paint.style = Paint.Style.STROKE
+        paint.strokeWidth = 1.5f
+        
+        // Crack 1
+        canvas.drawLine(
+            rect.left + rect.width() * 0.2f, rect.top + rect.height() * 0.4f,
+            rect.left + rect.width() * 0.35f, rect.top + rect.height() * 0.48f,
+            paint
+        )
+        // Crack 2
+        canvas.drawLine(
+            rect.left + rect.width() * 0.8f, rect.top + rect.height() * 0.7f,
+            rect.left + rect.width() * 0.65f, rect.top + rect.height() * 0.75f,
+            paint
+        )
+
+        paint.style = Paint.Style.FILL // restore fill
+        canvas.restore()
+    }
+
+    private fun applyButtonScale(canvas: Canvas, rect: RectF): Boolean {
+        if (pressedRect == rect) {
+            canvas.save()
+            canvas.scale(0.95f, 0.95f, rect.centerX(), rect.centerY())
+            canvas.translate(0f, 5f)
+            return true
+        }
+        return false
+    }
+
+    private fun applyTitleButtonPulse(canvas: Canvas, rect: RectF) {
+        val time = System.currentTimeMillis()
+        val pulse = 1.0f + 0.03f * Math.sin(time / 250.0).toFloat()
+        val isPressed = pressedRect == rect
+        canvas.save()
+        if (isPressed) {
+            canvas.scale(0.95f * pulse, 0.95f * pulse, rect.centerX(), rect.centerY())
+            canvas.translate(0f, 5f)
+        } else {
+            canvas.scale(pulse, pulse, rect.centerX(), rect.centerY())
+        }
+    }
+
+    private val tempDrawnRect = RectF()
+    private fun getDrawnButtonRect(rect: RectF): RectF {
+        if (pressedRect == rect) {
+            val cx = rect.centerX()
+            val cy = rect.centerY()
+            val w = rect.width() * 0.95f
+            val h = rect.height() * 0.95f
+            tempDrawnRect.set(cx - w / 2f, cy - h / 2f + 5f, cx + w / 2f, cy + h / 2f + 5f)
+            return tempDrawnRect
+        }
+        tempDrawnRect.set(rect)
+        return tempDrawnRect
     }
 
     private fun useSkill() {
@@ -641,7 +872,12 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback 
                             val turretH = turretW * (turretBmp.height.toFloat() / turretBmp.width.toFloat())
                             val turretCenterY = playerY - 15f
                             val turretRectF = RectF(playerX - turretW/2, turretCenterY - turretH/2, playerX + turretW/2, turretCenterY + turretH/2)
+                            
+                            canvas.save()
+                            canvas.rotate(180f, playerX, turretCenterY)
                             canvas.drawBitmap(turretBmp, null, turretRectF, paint)
+                            canvas.restore()
+                            
                             drawnWithSprite = true
                         }
                     }
@@ -667,7 +903,7 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback 
                                 val barrelW = bodyW * 0.22f
                                 val barrelH = barrelW * (barrelBmp.height.toFloat() / barrelBmp.width.toFloat())
                                 val barrelRectF = RectF(playerX - barrelW/2, playerY - bodyH/2 - barrelH/2, playerX + barrelW/2, playerY - bodyH/4)
-                                canvas.drawBitmap(barrelBmp, null, barrelRectF, paint)
+                                drawDesertBarrel(canvas, barrelRectF)
 
                                 // Draw turret
                                 val turretW = bodyW * 0.55f
@@ -741,12 +977,12 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback 
         // --- HUD Readability: Draw HUD background bar ---
         paint.color = Color.argb(140, 10, 10, 10)
         paint.style = Paint.Style.FILL
-        canvas.drawRect(0f, 0f, width.toFloat(), 230f, paint)
+        canvas.drawRect(0f, 90f, width.toFloat(), 300f, paint)
 
-        // Draw Row 1: HP, STAGE, Score (y = 80f)
+        // Draw Row 1: HP, STAGE, Score (y = 150f - shifted down by 70f)
         paint.color = Color.WHITE; paint.textSize = 45f; paint.textAlign = Paint.Align.LEFT
         paint.isFakeBoldText = true
-        canvas.drawText("HP: ", 50f, 80f, paint)
+        canvas.drawText("HP: ", 50f, 150f, paint)
         val hpTextWidth = paint.measureText("HP: ")
         
         var heartX = 50f + hpTextWidth + 30f
@@ -754,12 +990,12 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback 
             if (i < playerHp) {
                 paint.color = Color.RED
                 paint.style = Paint.Style.FILL
-                drawHeart(canvas, heartX, 65f, 20f, paint)
+                drawHeart(canvas, heartX, 135f, 20f, paint)
             } else {
                 paint.color = Color.rgb(80, 80, 80)
                 paint.style = Paint.Style.STROKE
                 paint.strokeWidth = 5f
-                drawHeart(canvas, heartX, 65f, 20f, paint)
+                drawHeart(canvas, heartX, 135f, 20f, paint)
             }
             heartX += 60f
         }
@@ -767,22 +1003,24 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback 
         
         paint.color = Color.WHITE
         paint.textAlign = Paint.Align.CENTER
-        canvas.drawText("STAGE $currentStage", width / 2f, 80f, paint)
+        canvas.drawText("STAGE $currentStage", width / 2f, 150f, paint)
         
         paint.textAlign = Paint.Align.RIGHT
-        canvas.drawText("Score: $score", width - 160f, 80f, paint)
+        canvas.drawText("Score: $score", width - 160f, 150f, paint)
 
-        // Draw Row 2: PWR (y = 140f) in Gold
+        // Draw Row 2: PWR (y = 210f - shifted down by 70f) in Gold
         paint.color = Color.rgb(255, 215, 0) // Gold
         paint.textSize = 40f
         paint.textAlign = Paint.Align.LEFT
-        canvas.drawText("PWR: $weaponLevel", 50f, 140f, paint)
+        canvas.drawText("PWR: $weaponLevel", 50f, 210f, paint)
 
         // --- Pause Button Configuration and Draw (Vertical align with Row 1) ---
         val btnSize = 70f
         val marginX = 50f
-        val marginY = 45f
+        val marginY = 115f
         pauseBtnRect.set(width - btnSize - marginX, marginY, width - marginX, marginY + btnSize)
+
+        val pauseScaled = applyButtonScale(canvas, pauseBtnRect)
 
         // Draw Pause button border
         paint.color = Color.rgb(200, 200, 200)
@@ -801,16 +1039,20 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback 
         canvas.drawRect(centerX - barW - gap/2, centerY - barH/2, centerX - gap/2, centerY + barH/2, paint)
         canvas.drawRect(centerX + gap/2, centerY - barH/2, centerX + barW + gap/2, centerY + barH/2, paint)
 
-        // Boss / Stage Progress Bar (Moved lower to y = 185f)
+        if (pauseScaled) {
+            canvas.restore()
+        }
+
+        // Boss / Stage Progress Bar (Moved lower to y = 255f)
         if (b == null) {
             paint.color = Color.rgb(60, 60, 60)
-            val barWidth = width * 0.8f; val barX = width * 0.1f; val barY = 185f
+            val barWidth = width * 0.8f; val barX = width * 0.1f; val barY = 255f
             canvas.drawRect(barX, barY, barX + barWidth, barY + 15f, paint)
             paint.color = Color.CYAN
             canvas.drawRect(barX, barY, barX + barWidth * (stageProgress / 100f), barY + 15f, paint)
         } else {
             paint.color = Color.rgb(40, 40, 40)
-            val barWidth = width * 0.9f; val barX = width * 0.05f; val barY = 180f
+            val barWidth = width * 0.9f; val barX = width * 0.05f; val barY = 250f
             canvas.drawRect(barX, barY, barX + barWidth, barY + 25f, paint)
             paint.color = Color.RED
             val hpRatio = b.hp.toFloat() / b.maxHp
@@ -840,6 +1082,8 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback 
         val sBtnX = width - sBtnWidth/2 - sBtnMargin
         val sBtnY = height - sBtnHeight/2 - sBtnMargin - 100f
         skillButtonRect.set(sBtnX - sBtnWidth/2, sBtnY - sBtnHeight/2, sBtnX + sBtnWidth/2, sBtnY + sBtnHeight/2)
+
+        val skillScaled = applyButtonScale(canvas, skillButtonRect)
 
         val isReady = skillGauge >= skillGaugeMax
         if (isReady) {
@@ -878,6 +1122,10 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback 
             canvas.drawText("$selectedSkillName ${skillGauge}%", sBtnX, textY, paint)
         }
 
+        if (skillScaled) {
+            canvas.restore()
+        }
+
         // Draw "ARTILLERY STRIKE!" overlay in center
         if (skillTextTimer > 0) {
             paint.color = Color.RED
@@ -895,6 +1143,9 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback 
         if (isShake) {
             canvas.restore()
         }
+
+        // Draw Simulated Status Bar over gameplay UI
+        drawSimulatedStatusBar(canvas)
     }
 
     private fun drawGameOverScreen(canvas: Canvas) {
@@ -919,33 +1170,44 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback 
     }
 
     private fun drawTitleScreen(canvas: Canvas) {
-        // Background: very dark gray/black
-        canvas.drawColor(Color.rgb(20, 20, 20))
+        drawPremiumBackground(canvas)
 
         // Title: "1916"
         paint.color = Color.RED
-        paint.textSize = 180f
+        paint.textSize = 240f
         paint.textAlign = Paint.Align.CENTER
         paint.isFakeBoldText = true
-        canvas.drawText("1916", width / 2f, height / 3f, paint)
+        paint.typeface = Typeface.create(Typeface.MONOSPACE, Typeface.BOLD)
+        paint.setShadowLayer(25f, 0f, 0f, Color.RED)
+        canvas.drawText("1916", width / 2f, height * 0.22f, paint)
+        paint.clearShadowLayer()
 
         // Subtitle: "Tank Arcade Shooter"
-        paint.color = Color.rgb(200, 200, 200)
-        paint.textSize = 50f
-        paint.isFakeBoldText = false
-        canvas.drawText("Tank Arcade Shooter", width / 2f, height / 3f + 80f, paint)
-
-        // Best Score
-        paint.color = Color.YELLOW
-        paint.textSize = 40f
-        canvas.drawText("BEST SCORE: $bestScore", width / 2f, height / 3f + 160f, paint)
-
-        // Selection State Display
         paint.color = Color.WHITE
-        paint.textSize = 45f
+        paint.textSize = 55f
         paint.isFakeBoldText = true
-        canvas.drawText("SKIN: $selectedSkinName", width / 2f, height * 0.40f, paint)
-        canvas.drawText("SKILL: $selectedSkillName", width / 2f, height * 0.45f, paint)
+        paint.typeface = Typeface.create(Typeface.SANS_SERIF, Typeface.BOLD)
+        canvas.drawText("Tank Arcade Shooter", width / 2f, height * 0.28f, paint)
+
+        // Subtitle 2: "A New Gravity Experience"
+        paint.color = Color.rgb(180, 200, 220)
+        paint.textSize = 34f
+        paint.isFakeBoldText = false
+        paint.typeface = Typeface.create(Typeface.SANS_SERIF, Typeface.NORMAL)
+        canvas.drawText("A New Gravity Experience", width / 2f, height * 0.31f, paint)
+
+        // Structured vertical block for status display
+        paint.typeface = Typeface.create(Typeface.SANS_SERIF, Typeface.BOLD)
+        paint.textSize = 38f
+        
+        paint.color = Color.rgb(255, 215, 0)
+        canvas.drawText("🏆 BEST SCORE: $bestScore", width / 2f, height * 0.36f, paint)
+        
+        paint.color = Color.rgb(0, 230, 255)
+        canvas.drawText("🛡️ SKIN: $selectedSkinName", width / 2f, height * 0.41f, paint)
+        
+        paint.color = Color.rgb(255, 180, 0)
+        canvas.drawText("⚡ SKILL: $selectedSkillName", width / 2f, height * 0.46f, paint)
 
         // Button dimensions
         val btnWidth = 450f
@@ -956,72 +1218,104 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback 
         val startY = height * 0.55f
         startButtonRect.set(btnX - btnWidth/2, startY - btnHeight/2, btnX + btnWidth/2, startY + btnHeight/2)
 
-        paint.color = Color.rgb(34, 139, 34) // Forest Green
-        canvas.drawRoundRect(startButtonRect, 25f, 25f, paint)
-        paint.color = Color.rgb(50, 205, 50) // Lime Green
-        paint.style = Paint.Style.STROKE
-        paint.strokeWidth = 6f
-        canvas.drawRoundRect(startButtonRect, 25f, 25f, paint)
+        applyTitleButtonPulse(canvas, startButtonRect)
+        
+        // Draw fill gradient
+        paint.shader = startButtonGradient
         paint.style = Paint.Style.FILL
-
+        canvas.drawRoundRect(startButtonRect, 25f, 25f, paint)
+        paint.shader = null
+        
+        // Draw bevel outline
+        paint.color = Color.argb(120, 255, 255, 255)
+        paint.style = Paint.Style.STROKE
+        paint.strokeWidth = 3f
+        canvas.drawRoundRect(startButtonRect, 25f, 25f, paint)
+        
+        // Draw Text
         paint.color = Color.WHITE
+        paint.style = Paint.Style.FILL
         paint.textSize = 50f
         paint.isFakeBoldText = true
-        var textY = startY - (paint.descent() + paint.ascent()) / 2f
+        paint.typeface = Typeface.create(Typeface.SANS_SERIF, Typeface.BOLD)
+        var textY = startButtonRect.centerY() - (paint.descent() + paint.ascent()) / 2f
         canvas.drawText("START", btnX, textY, paint)
+        
+        canvas.restore()
 
         // 2. SKIN Button
         val skinY = height * 0.65f
         skinButtonRect.set(btnX - btnWidth/2, skinY - btnHeight/2, btnX + btnWidth/2, skinY + btnHeight/2)
 
-        paint.color = Color.rgb(47, 79, 79) // Slate Gray
-        canvas.drawRoundRect(skinButtonRect, 25f, 25f, paint)
-        paint.color = Color.rgb(0, 255, 255) // Cyan
-        paint.style = Paint.Style.STROKE
-        paint.strokeWidth = 6f
-        canvas.drawRoundRect(skinButtonRect, 25f, 25f, paint)
+        applyTitleButtonPulse(canvas, skinButtonRect)
+        
+        // Draw background
+        paint.color = Color.argb(180, 20, 22, 28)
         paint.style = Paint.Style.FILL
-
+        canvas.drawRoundRect(skinButtonRect, 25f, 25f, paint)
+        
+        // Draw neon border
+        paint.color = Color.rgb(0, 240, 255)
+        paint.style = Paint.Style.STROKE
+        paint.strokeWidth = 5f
+        canvas.drawRoundRect(skinButtonRect, 25f, 25f, paint)
+        
+        // Draw Text
         paint.color = Color.WHITE
+        paint.style = Paint.Style.FILL
         paint.textSize = 50f
         paint.isFakeBoldText = true
-        textY = skinY - (paint.descent() + paint.ascent()) / 2f
+        textY = skinButtonRect.centerY() - (paint.descent() + paint.ascent()) / 2f
         canvas.drawText("SKIN", btnX, textY, paint)
+        
+        canvas.restore()
 
         // 3. SKILL Button
         val skillY = height * 0.75f
         titleSkillButtonRect.set(btnX - btnWidth/2, skillY - btnHeight/2, btnX + btnWidth/2, skillY + btnHeight/2)
 
-        paint.color = Color.rgb(72, 61, 139) // Dark Slate Blue
-        canvas.drawRoundRect(titleSkillButtonRect, 25f, 25f, paint)
-        paint.color = Color.rgb(255, 215, 0) // Gold
-        paint.style = Paint.Style.STROKE
-        paint.strokeWidth = 6f
-        canvas.drawRoundRect(titleSkillButtonRect, 25f, 25f, paint)
+        applyTitleButtonPulse(canvas, titleSkillButtonRect)
+        
+        // Draw background
+        paint.color = Color.argb(180, 20, 22, 28)
         paint.style = Paint.Style.FILL
-
+        canvas.drawRoundRect(titleSkillButtonRect, 25f, 25f, paint)
+        
+        // Draw neon border
+        paint.color = Color.rgb(255, 200, 0)
+        paint.style = Paint.Style.STROKE
+        paint.strokeWidth = 5f
+        canvas.drawRoundRect(titleSkillButtonRect, 25f, 25f, paint)
+        
+        // Draw Text
         paint.color = Color.WHITE
+        paint.style = Paint.Style.FILL
         paint.textSize = 50f
         paint.isFakeBoldText = true
-        textY = skillY - (paint.descent() + paint.ascent()) / 2f
+        textY = titleSkillButtonRect.centerY() - (paint.descent() + paint.ascent()) / 2f
         canvas.drawText("SKILL", btnX, textY, paint)
+        
+        canvas.restore()
 
         // Instruction Text
         paint.color = Color.rgb(150, 150, 150)
         paint.textSize = 35f
         paint.isFakeBoldText = false
+        paint.typeface = Typeface.create(Typeface.SANS_SERIF, Typeface.NORMAL)
         canvas.drawText("Touch START to Play", width / 2f, height * 0.85f, paint)
+
+        drawSimulatedStatusBar(canvas)
     }
 
     private fun drawSkinSelectScreen(canvas: Canvas) {
-        // Background
-        canvas.drawColor(Color.rgb(20, 20, 20))
+        drawPremiumBackground(canvas)
 
         // Title: "SELECT TANK"
         paint.color = Color.WHITE
         paint.textSize = 80f
         paint.textAlign = Paint.Align.CENTER
         paint.isFakeBoldText = true
+        paint.typeface = Typeface.create(Typeface.SANS_SERIF, Typeface.BOLD)
         canvas.drawText("SELECT TANK", width / 2f, height * 0.15f, paint)
 
         // Card Configuration
@@ -1050,9 +1344,13 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback 
         val backY = height * 0.85f
         skinBackButtonRect.set(cardX - backWidth/2, backY - backHeight/2, cardX + backWidth/2, backY + backHeight/2)
 
+        val backScaled = applyButtonScale(canvas, skinBackButtonRect)
+
         // Draw BACK Button background
-        paint.color = Color.rgb(50, 50, 60)
+        paint.color = Color.argb(180, 20, 22, 28)
+        paint.style = Paint.Style.FILL
         canvas.drawRoundRect(skinBackButtonRect, 20f, 20f, paint)
+        
         paint.color = Color.rgb(180, 180, 180)
         paint.style = Paint.Style.STROKE
         paint.strokeWidth = 4f
@@ -1063,15 +1361,24 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback 
         paint.textSize = 45f
         paint.isFakeBoldText = true
         paint.textAlign = Paint.Align.CENTER
-        val textY = backY - (paint.descent() + paint.ascent()) / 2f
+        paint.typeface = Typeface.create(Typeface.SANS_SERIF, Typeface.BOLD)
+        val textY = skinBackButtonRect.centerY() - (paint.descent() + paint.ascent()) / 2f
         canvas.drawText("BACK", cardX, textY, paint)
+
+        if (backScaled) {
+            canvas.restore()
+        }
+
+        drawSimulatedStatusBar(canvas)
     }
 
     private fun drawSkinCard(canvas: Canvas, rect: RectF, name: String, desc: String, bodyColor: Int, cannonColor: Int) {
+        val scaled = applyButtonScale(canvas, rect)
         val isSelected = selectedSkinName == name
 
         // Draw Card Background
         paint.color = Color.rgb(35, 35, 35)
+        paint.style = Paint.Style.FILL
         canvas.drawRoundRect(rect, 20f, 20f, paint)
 
         // Draw Card Border
@@ -1108,7 +1415,12 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback 
                     val turretH = turretW * (turretBmp.height.toFloat() / turretBmp.width.toFloat())
                     val turretCenterY = previewY - 8f
                     val turretRectF = RectF(previewX - turretW/2, turretCenterY - turretH/2, previewX + turretW/2, turretCenterY + turretH/2)
+                    
+                    canvas.save()
+                    canvas.rotate(180f, previewX, turretCenterY)
                     canvas.drawBitmap(turretBmp, null, turretRectF, paint)
+                    canvas.restore()
+                    
                     drawnPreview = true
                 }
             }
@@ -1130,11 +1442,11 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback 
                         val bodyRectF = RectF(previewX - bodyW/2, previewY - bodyH/2, previewX + bodyW/2, previewY + bodyH/2)
                         canvas.drawBitmap(bodyBmp, srcRect, bodyRectF, paint)
 
-                        // Draw barrel
+                        // Draw barrel using custom drawDesertBarrel method
                         val barrelW = bodyW * 0.22f
                         val barrelH = barrelW * (barrelBmp.height.toFloat() / barrelBmp.width.toFloat())
                         val barrelRectF = RectF(previewX - barrelW/2, previewY - bodyH/2 - barrelH/2, previewX + barrelW/2, previewY - bodyH/4)
-                        canvas.drawBitmap(barrelBmp, null, barrelRectF, paint)
+                        drawDesertBarrel(canvas, barrelRectF)
 
                         // Draw turret
                         val turretW = bodyW * 0.55f
@@ -1174,28 +1486,41 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback 
         val textStartX = rect.left + 180f
         paint.textAlign = Paint.Align.LEFT
 
+        // Name translation for premium display
+        val displayName = when (name) {
+            "DEFAULT" -> "PREVIEW: DEFAULT (Fixed)"
+            "DESERT" -> "PREVIEW: DESSERT (Fixed)"
+            else -> name
+        }
+
         // Name
         paint.color = Color.WHITE
         paint.textSize = 45f
         paint.isFakeBoldText = true
-        canvas.drawText(name, textStartX, rect.centerY() - 10f, paint)
+        paint.typeface = Typeface.create(Typeface.SANS_SERIF, Typeface.BOLD)
+        canvas.drawText(displayName, textStartX, rect.centerY() - 10f, paint)
 
         // Description
         paint.color = Color.rgb(180, 180, 180)
         paint.textSize = 30f
         paint.isFakeBoldText = false
+        paint.typeface = Typeface.create(Typeface.SANS_SERIF, Typeface.NORMAL)
         canvas.drawText(desc, textStartX, rect.centerY() + 35f, paint)
+
+        if (scaled) {
+            canvas.restore()
+        }
     }
 
     private fun drawSkillSelectScreen(canvas: Canvas) {
-        // Background
-        canvas.drawColor(Color.rgb(20, 20, 20))
+        drawPremiumBackground(canvas)
 
         // Title: "SELECT SKILL"
         paint.color = Color.WHITE
         paint.textSize = 80f
         paint.textAlign = Paint.Align.CENTER
         paint.isFakeBoldText = true
+        paint.typeface = Typeface.create(Typeface.SANS_SERIF, Typeface.BOLD)
         canvas.drawText("SELECT SKILL", width / 2f, height * 0.15f, paint)
 
         // Card Configuration
@@ -1224,9 +1549,13 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback 
         val backY = height * 0.85f
         skillBackButtonRect.set(cardX - backWidth/2, backY - backHeight/2, cardX + backWidth/2, backY + backHeight/2)
 
+        val backScaled = applyButtonScale(canvas, skillBackButtonRect)
+
         // Draw BACK Button background
-        paint.color = Color.rgb(50, 50, 60)
+        paint.color = Color.argb(180, 20, 22, 28)
+        paint.style = Paint.Style.FILL
         canvas.drawRoundRect(skillBackButtonRect, 20f, 20f, paint)
+        
         paint.color = Color.rgb(180, 180, 180)
         paint.style = Paint.Style.STROKE
         paint.strokeWidth = 4f
@@ -1237,15 +1566,24 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback 
         paint.textSize = 45f
         paint.isFakeBoldText = true
         paint.textAlign = Paint.Align.CENTER
-        val textY = backY - (paint.descent() + paint.ascent()) / 2f
+        paint.typeface = Typeface.create(Typeface.SANS_SERIF, Typeface.BOLD)
+        val textY = skillBackButtonRect.centerY() - (paint.descent() + paint.ascent()) / 2f
         canvas.drawText("BACK", cardX, textY, paint)
+
+        if (backScaled) {
+            canvas.restore()
+        }
+
+        drawSimulatedStatusBar(canvas)
     }
 
     private fun drawSkillCard(canvas: Canvas, rect: RectF, name: String, desc: String, icon: String) {
+        val scaled = applyButtonScale(canvas, rect)
         val isSelected = selectedSkillName == name
 
         // Draw Card Background
         paint.color = Color.rgb(35, 35, 35)
+        paint.style = Paint.Style.FILL
         canvas.drawRoundRect(rect, 20f, 20f, paint)
 
         // Draw Card Border
@@ -1267,6 +1605,7 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback 
         
         paint.textSize = 60f
         paint.textAlign = Paint.Align.CENTER
+        paint.typeface = Typeface.DEFAULT
         val iconY = previewY - (paint.descent() + paint.ascent()) / 2f
         canvas.drawText(icon, previewX, iconY, paint)
 
@@ -1278,13 +1617,19 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback 
         paint.color = Color.WHITE
         paint.textSize = 45f
         paint.isFakeBoldText = true
+        paint.typeface = Typeface.create(Typeface.SANS_SERIF, Typeface.BOLD)
         canvas.drawText(name, textStartX, rect.centerY() - 10f, paint)
 
         // Description
         paint.color = Color.rgb(180, 180, 180)
         paint.textSize = 30f
         paint.isFakeBoldText = false
+        paint.typeface = Typeface.create(Typeface.SANS_SERIF, Typeface.NORMAL)
         canvas.drawText(desc, textStartX, rect.centerY() + 35f, paint)
+
+        if (scaled) {
+            canvas.restore()
+        }
     }
 
     private fun drawPausedScreen(canvas: Canvas) {
@@ -1302,75 +1647,106 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback 
 
     override fun onTouchEvent(event: MotionEvent): Boolean {
         synchronized(holder) {
-            val isButtonTouch = gameState == GameState.PLAYING && (pauseBtnRect.contains(event.x, event.y) || skillButtonRect.contains(event.x, event.y))
+            val x = event.x
+            val y = event.y
 
-            if (event.action != MotionEvent.ACTION_DOWN) {
-                if (gameState == GameState.PLAYING && !isButtonTouch) {
-                    targetPlayerX = event.x
-                    targetPlayerY = event.y - 150f
-                }
-                return true
-            }
-
-            when (gameState) {
-                GameState.TITLE -> {
-                    if (startButtonRect.contains(event.x, event.y)) {
-                        restartGame()
-                    } else if (skinButtonRect.contains(event.x, event.y)) {
-                        gameState = GameState.SKIN_SELECT
-                    } else if (titleSkillButtonRect.contains(event.x, event.y)) {
-                        gameState = GameState.SKILL_SELECT
-                    }
-                }
-                GameState.SKIN_SELECT -> {
-                    if (defaultSkinRect.contains(event.x, event.y)) {
-                        selectedSkinName = "DEFAULT"
-                    } else if (desertSkinRect.contains(event.x, event.y)) {
-                        selectedSkinName = "DESERT"
-                    } else if (heavySkinRect.contains(event.x, event.y)) {
-                        selectedSkinName = "HEAVY"
-                    } else if (skinBackButtonRect.contains(event.x, event.y)) {
-                        gameState = GameState.TITLE
-                    }
-                }
-                GameState.SKILL_SELECT -> {
-                    if (artillerySkillRect.contains(event.x, event.y)) {
-                        selectedSkillName = "ARTILLERY"
-                    } else if (shieldSkillRect.contains(event.x, event.y)) {
-                        selectedSkillName = "SHIELD"
-                    } else if (repairSkillRect.contains(event.x, event.y)) {
-                        selectedSkillName = "REPAIR"
-                    } else if (skillBackButtonRect.contains(event.x, event.y)) {
-                        gameState = GameState.TITLE
-                    }
-                }
-                GameState.PLAYING -> {
-                    if (pauseBtnRect.contains(event.x, event.y)) {
-                        gameState = GameState.PAUSED
-                    } else if (skillButtonRect.contains(event.x, event.y)) {
-                        if (skillGauge >= skillGaugeMax) {
-                            if (selectedSkillName == "ARTILLERY") {
-                                pendingSkillUse = true
-                            } else if (selectedSkillName == "SHIELD") {
-                                pendingShieldUse = true
-                            } else if (selectedSkillName == "REPAIR") {
-                                if (playerHp >= maxHp) {
-                                    post {
-                                        android.widget.Toast.makeText(context, "HP is already full!", android.widget.Toast.LENGTH_SHORT).show()
-                                    }
-                                } else {
-                                    pendingRepairUse = true
-                                }
+            when (event.action) {
+                MotionEvent.ACTION_DOWN -> {
+                    when (gameState) {
+                        GameState.TITLE -> {
+                            if (startButtonRect.contains(x, y)) pressedRect = startButtonRect
+                            else if (skinButtonRect.contains(x, y)) pressedRect = skinButtonRect
+                            else if (titleSkillButtonRect.contains(x, y)) pressedRect = titleSkillButtonRect
+                        }
+                        GameState.SKIN_SELECT -> {
+                            if (defaultSkinRect.contains(x, y)) pressedRect = defaultSkinRect
+                            else if (desertSkinRect.contains(x, y)) pressedRect = desertSkinRect
+                            else if (heavySkinRect.contains(x, y)) pressedRect = heavySkinRect
+                            else if (skinBackButtonRect.contains(x, y)) pressedRect = skinBackButtonRect
+                        }
+                        GameState.SKILL_SELECT -> {
+                            if (artillerySkillRect.contains(x, y)) pressedRect = artillerySkillRect
+                            else if (shieldSkillRect.contains(x, y)) pressedRect = shieldSkillRect
+                            else if (repairSkillRect.contains(x, y)) pressedRect = repairSkillRect
+                            else if (skillBackButtonRect.contains(x, y)) pressedRect = skillBackButtonRect
+                        }
+                        GameState.PLAYING -> {
+                            if (pauseBtnRect.contains(x, y)) pressedRect = pauseBtnRect
+                            else if (skillButtonRect.contains(x, y)) pressedRect = skillButtonRect
+                            else {
+                                targetPlayerX = x
+                                targetPlayerY = y - 150f
                             }
                         }
-                    } else {
-                        targetPlayerX = event.x
-                        targetPlayerY = event.y - 150f
+                        else -> {}
                     }
                 }
-                GameState.PAUSED -> gameState = GameState.PLAYING
-                GameState.STAGE_CLEAR -> startNextStage()
-                GameState.GAME_OVER, GameState.FINAL_CLEAR -> gameState = GameState.TITLE
+                MotionEvent.ACTION_MOVE -> {
+                    val rect = pressedRect
+                    if (rect != null && !rect.contains(x, y)) {
+                        pressedRect = null
+                    }
+                    if (gameState == GameState.PLAYING && pressedRect == null) {
+                        targetPlayerX = x
+                        targetPlayerY = y - 150f
+                    }
+                }
+                MotionEvent.ACTION_UP -> {
+                    val rect = pressedRect
+                    pressedRect = null
+                    if (rect != null && rect.contains(x, y)) {
+                        when (gameState) {
+                            GameState.TITLE -> {
+                                if (rect == startButtonRect) restartGame()
+                                else if (rect == skinButtonRect) gameState = GameState.SKIN_SELECT
+                                else if (rect == titleSkillButtonRect) gameState = GameState.SKILL_SELECT
+                            }
+                            GameState.SKIN_SELECT -> {
+                                if (rect == defaultSkinRect) selectedSkinName = "DEFAULT"
+                                else if (rect == desertSkinRect) selectedSkinName = "DESERT"
+                                else if (rect == heavySkinRect) selectedSkinName = "HEAVY"
+                                else if (rect == skinBackButtonRect) gameState = GameState.TITLE
+                            }
+                            GameState.SKILL_SELECT -> {
+                                if (rect == artillerySkillRect) selectedSkillName = "ARTILLERY"
+                                else if (rect == shieldSkillRect) selectedSkillName = "SHIELD"
+                                else if (rect == repairSkillRect) selectedSkillName = "REPAIR"
+                                else if (rect == skillBackButtonRect) gameState = GameState.TITLE
+                            }
+                            GameState.PLAYING -> {
+                                if (rect == pauseBtnRect) {
+                                    gameState = GameState.PAUSED
+                                } else if (rect == skillButtonRect) {
+                                    if (skillGauge >= skillGaugeMax) {
+                                        if (selectedSkillName == "ARTILLERY") {
+                                            pendingSkillUse = true
+                                        } else if (selectedSkillName == "SHIELD") {
+                                            pendingShieldUse = true
+                                        } else if (selectedSkillName == "REPAIR") {
+                                            if (playerHp >= maxHp) {
+                                                post {
+                                                    android.widget.Toast.makeText(context, "HP is already full!", android.widget.Toast.LENGTH_SHORT).show()
+                                                }
+                                            } else {
+                                                pendingRepairUse = true
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                            else -> {}
+                        }
+                    } else {
+                        if (rect == null) {
+                            when (gameState) {
+                                GameState.PAUSED -> gameState = GameState.PLAYING
+                                GameState.STAGE_CLEAR -> startNextStage()
+                                GameState.GAME_OVER, GameState.FINAL_CLEAR -> gameState = GameState.TITLE
+                                else -> {}
+                            }
+                        }
+                    }
+                }
             }
             return true
         }
