@@ -460,6 +460,7 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback 
                 val volume = when (resId) {
                     R.raw.r1boss -> 1.0f
                     R.raw.r2boss -> 1.0f
+                    R.raw.lobby -> 0.85f
                     else -> 0.6f
                 }
                 setVolume(volume, volume)
