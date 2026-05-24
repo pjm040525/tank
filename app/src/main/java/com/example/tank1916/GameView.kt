@@ -1240,6 +1240,73 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback 
         val statusSkinY = Math.round(height * 0.41f).toFloat()
         val statusSkillY = Math.round(height * 0.46f).toFloat()
 
+        // --- Draw Military Star Background (국방마크) ---
+        paint.color = Color.argb(25, 255, 255, 255)
+        paint.style = Paint.Style.STROKE
+        paint.strokeWidth = 8f
+        val starCY = height * 0.32f
+        canvas.drawCircle(width / 2f, starCY, 220f, paint)
+        paint.style = Paint.Style.FILL
+
+        val starPath = Path()
+        val points = 5
+        val angle = Math.PI / points
+        val cx = width / 2f
+        val radius = 180f
+        for (i in 0 until 2 * points) {
+            val r = if (i % 2 == 0) radius else radius * 0.38f
+            val x = cx + r * Math.sin(i * angle).toFloat()
+            val y = starCY - r * Math.cos(i * angle).toFloat()
+            if (i == 0) starPath.moveTo(x, y) else starPath.lineTo(x, y)
+        }
+        starPath.close()
+        canvas.drawPath(starPath, paint)
+
+        // --- Draw Background Tanks (전차 배치) ---
+        // 1. Left Tank (DEFAULT)
+        val bmpDefault = bodyBitmap
+        if (bmpDefault != null) {
+            canvas.save()
+            canvas.translate(width * 0.18f, height * 0.32f)
+            canvas.rotate(35f)
+            paint.alpha = 60
+            val size = playerSize * 1.2f
+            val rect = RectF(-size/2, -size/2, size/2, size/2)
+            canvas.drawBitmap(bmpDefault, null, rect, paint)
+            canvas.restore()
+        }
+
+        // 2. Right Tank (DESERT)
+        val bmpDesert = tank2BodyBmp
+        if (bmpDesert != null) {
+            canvas.save()
+            canvas.translate(width * 0.82f, height * 0.32f)
+            canvas.rotate(-35f)
+            paint.alpha = 60
+            val size = playerSize * 1.2f
+            val frameW = bmpDesert.width / 4
+            val frameH = bmpDesert.height
+            val srcRect = android.graphics.Rect(0, 0, frameW, frameH)
+            val rect = RectF(-size/2, -size/2, size/2, size/2)
+            canvas.drawBitmap(bmpDesert, srcRect, rect, paint)
+            canvas.restore()
+        }
+
+        // 3. Center/Lower Tank (HEAVY)
+        val bmpHeavy = tank3BodyBmp
+        if (bmpHeavy != null) {
+            canvas.save()
+            canvas.translate(width / 2f, height * 0.50f)
+            paint.alpha = 40
+            val size = playerSize * 1.5f
+            val rect = RectF(-size/2, -size/2, size/2, size/2)
+            canvas.drawBitmap(bmpHeavy, null, rect, paint)
+            canvas.restore()
+        }
+
+        // Reset Paint alpha to opaque
+        paint.alpha = 255
+
         // Title: "1916"
         paint.color = Color.RED
         paint.textSize = 240f
