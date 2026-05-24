@@ -16,6 +16,7 @@ import android.graphics.Shader
 import android.graphics.Typeface
 import android.media.AudioAttributes
 import android.media.SoundPool
+import android.media.MediaPlayer
 import android.view.MotionEvent
 import android.view.SurfaceHolder
 import android.view.SurfaceView
@@ -67,6 +68,8 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback 
     private var shieldSoundId: Int = 0
     private var hitSoundId: Int = 0
     private var repairSoundId: Int = 0
+    private var bgmPlayer: MediaPlayer? = null
+    private var currentBgmResId: Int = 0
 
     private var playerX = 0f
     private var playerY = 0f
@@ -206,6 +209,7 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback 
         shieldSoundId = soundPool?.load(context, R.raw.shei, 1) ?: 0
         hitSoundId = soundPool?.load(context, R.raw.thud_sfx, 1) ?: 0
         repairSoundId = soundPool?.load(context, R.raw.bumper, 1) ?: 0
+        playBgm(R.raw.lobby)
     }
 
     override fun surfaceCreated(holder: SurfaceHolder) {
@@ -233,6 +237,7 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback 
         }
         soundPool?.release()
         soundPool = null
+        stopBgm()
     }
 
     override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
@@ -440,6 +445,66 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback 
         }
     }
 
+    private fun playBgm(resId: Int) {
+        if (currentBgmResId == resId) return
+        try {
+            bgmPlayer?.stop()
+            bgmPlayer?.release()
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+        currentBgmResId = resId
+        try {
+            bgmPlayer = MediaPlayer.create(context, resId).apply {
+                isLooping = true
+                start()
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+    }
+
+    private fun stopBgm() {
+        try {
+            bgmPlayer?.stop()
+            bgmPlayer?.release()
+            bgmPlayer = null
+            currentBgmResId = 0
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+    }
+
+    private fun updateBgm() {
+        when (gameState) {
+            GameState.TITLE, GameState.SKIN_SELECT, GameState.SKILL_SELECT -> {
+                playBgm(R.raw.lobby)
+            }
+            GameState.PLAYING -> {
+                val b = boss
+                if (b != null && b.isActive) {
+                    if (currentStage == 1) {
+                        playBgm(R.raw.r1boss)
+                    } else {
+                        playBgm(R.raw.r2boss)
+                    }
+                } else {
+                    if (currentStage == 1) {
+                        playBgm(R.raw.round1)
+                    } else {
+                        playBgm(R.raw.round2)
+                    }
+                }
+            }
+            GameState.PAUSED -> {
+                // Keep playing current BGM
+            }
+            GameState.GAME_OVER, GameState.STAGE_CLEAR, GameState.FINAL_CLEAR -> {
+                playBgm(R.raw.lobby)
+            }
+        }
+    }
+
     private fun increaseSkillGauge(type: EnemyType) {
         val gain = when (type) {
             EnemyType.BASIC -> 10
@@ -451,6 +516,7 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback 
     }
 
     fun update() {
+        updateBgm()
         if (gameState != GameState.PLAYING) {
             lastUpdateTime = System.currentTimeMillis()
             return 
@@ -656,7 +722,8 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback 
 
     private fun checkItemDrop(x: Float, y: Float) {
         if (random.nextFloat() < itemDropProbability) {
-            val type = if (random.nextBoolean()) ItemType.POWER else ItemType.HEAL
+            // Lower power item drop probability to 30% (from 50%) to adjust difficulty
+            val type = if (random.nextFloat() < 0.3f) ItemType.POWER else ItemType.HEAL
             items.add(Item(x, y, type))
         }
     }
