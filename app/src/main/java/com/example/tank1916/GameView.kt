@@ -136,7 +136,7 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback 
     private var stageElapsedTimeMs = 0L
 
     private val items = mutableListOf<Item>()
-    private val itemDropProbability = 0.05f 
+    private val itemDropProbability = 0.08f 
 
     private val effects = mutableListOf<Effect>()
     private var invincibleTimer = 0 
@@ -457,6 +457,12 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback 
         try {
             bgmPlayer = MediaPlayer.create(context, resId).apply {
                 isLooping = true
+                val volume = when (resId) {
+                    R.raw.r1boss -> 1.0f
+                    R.raw.r2boss -> 1.0f
+                    else -> 0.6f
+                }
+                setVolume(volume, volume)
                 start()
             }
         } catch (e: Exception) {
