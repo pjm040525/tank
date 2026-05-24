@@ -729,8 +729,8 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback 
 
     private fun checkItemDrop(x: Float, y: Float) {
         if (random.nextFloat() < itemDropProbability) {
-            // Lower power item drop probability to 30% (from 50%) to adjust difficulty
-            val type = if (random.nextFloat() < 0.3f) ItemType.POWER else ItemType.HEAL
+            // Lower power item drop probability to 15% (from 30%) to adjust difficulty
+            val type = if (random.nextFloat() < 0.15f) ItemType.POWER else ItemType.HEAL
             items.add(Item(x, y, type))
         }
     }
