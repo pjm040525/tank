@@ -61,6 +61,8 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback 
     private val grainX = floatArrayOf(0.2f, 0.5f, 0.8f, 0.3f, 0.7f, 0.1f, 0.9f, 0.4f, 0.6f, 0.25f, 0.75f, 0.5f)
     private val grainY = floatArrayOf(0.12f, 0.28f, 0.35f, 0.45f, 0.52f, 0.68f, 0.72f, 0.83f, 0.91f, 0.58f, 0.18f, 0.78f)
     private val grainSizes = floatArrayOf(1.5f, 2f, 1.2f, 2.2f, 1.5f, 1.8f, 2.5f, 1.3f, 2f, 1.6f, 2.1f, 1.4f)
+    private var isSoundLoaded = false
+    private var soundsLoadedCount = 0
     private var soundPool: SoundPool? = null
     private var shootSoundId: Int = 0
     private var boomSoundId: Int = 0
@@ -75,12 +77,16 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback 
     private var playerY = 0f
     private var targetPlayerX = 0f
     private var targetPlayerY = 0f
-    private val playerSize = 100f
+    private var playerSize = 100f
+    private var playerSpeedLerp = 0.4f
+    private var bulletRadius = 10f
+    private var bulletDamage = 1
+    private var bulletColor = Color.RED
 
     private val bullets = mutableListOf<Bullet>()
     private var lastFireTime = 0L
-    private val fireDelay = 300L 
-    private val bulletSpeed = 25f
+    private var fireDelay = 300L 
+    private var bulletSpeed = 25f
 
     private val enemies = mutableListOf<Enemy>()
     private var lastWaveTime = 0L
@@ -110,7 +116,7 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback 
     private var treadSpawnTimer = 0
 
     private var playerHp = 3
-    private val maxHp = 3
+    private var maxHp = 3
     private var score = 0
         set(value) {
             field = value
@@ -166,6 +172,8 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback 
     private val shieldSkillRect = RectF()
     private val repairSkillRect = RectF()
     private val skillBackButtonRect = RectF()
+    private val resumeBtnRect = RectF()
+    private val quitBtnRect = RectF()
 
     private var selectedSkinName = "DEFAULT"
     private var selectedSkillName = "ARTILLERY"
@@ -203,6 +211,14 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback 
             .setMaxStreams(5)
             .setAudioAttributes(audioAttributes)
             .build()
+        soundPool?.setOnLoadCompleteListener { _, _, status ->
+            if (status == 0) {
+                soundsLoadedCount++
+                if (soundsLoadedCount >= 6) {
+                    isSoundLoaded = true
+                }
+            }
+        }
         shootSoundId = soundPool?.load(context, R.raw.shooting, 1) ?: 0
         boomSoundId = soundPool?.load(context, R.raw.boom, 1) ?: 0
         healSoundId = soundPool?.load(context, R.raw.heal, 1) ?: 0
@@ -560,8 +576,8 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback 
         targetPlayerY = Math.max(playerSize, Math.min(height.toFloat() - playerSize/2, targetPlayerY))
 
         // Smooth player movement interpolation (Lerp)
-        playerX += (targetPlayerX - playerX) * 0.4f
-        playerY += (targetPlayerY - playerY) * 0.4f
+        playerX += (targetPlayerX - playerX) * playerSpeedLerp
+        playerY += (targetPlayerY - playerY) * playerSpeedLerp
         playerX = Math.max(playerSize/2, Math.min(width - playerSize/2, playerX))
         playerY = Math.max(playerSize, Math.min(height - playerSize/2, playerY))
 
@@ -630,7 +646,7 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback 
             for (bullet in bullets) {
                 if (bullet.isActive && RectF.intersects(bullet.getBounds(), enemy.getBounds())) {
                     bullet.isActive = false
-                    enemy.takeDamage()
+                    enemy.takeDamage(bullet.damage)
                     effects.add(Effect(bullet.x, bullet.y, EffectType.HIT_SPARK, maxLifeTime = 10))
                     if (!enemy.isActive) {
                         score += enemy.scoreValue
@@ -665,7 +681,7 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback 
             for (bullet in bullets) {
                 if (bullet.isActive && RectF.intersects(bullet.getBounds(), b.getBounds())) {
                     bullet.isActive = false
-                    b.takeDamage(1)
+                    b.takeDamage(bullet.damage)
                     effects.add(Effect(bullet.x, bullet.y, EffectType.HIT_SPARK, maxLifeTime = 10))
                 }
             }
@@ -707,22 +723,22 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback 
             soundPool?.play(shootSoundId, 1f, 1f, 1, 0, 1f)
         }
         when (weaponLevel) {
-            1 -> bullets.add(Bullet(playerX, playerY - playerSize, bulletSpeed))
+            1 -> bullets.add(Bullet(playerX, playerY - playerSize, bulletSpeed, 0f, bulletRadius, bulletDamage, bulletColor))
             2 -> {
-                bullets.add(Bullet(playerX - 25f, playerY - playerSize, bulletSpeed))
-                bullets.add(Bullet(playerX + 25f, playerY - playerSize, bulletSpeed))
+                bullets.add(Bullet(playerX - 25f, playerY - playerSize, bulletSpeed, 0f, bulletRadius, bulletDamage, bulletColor))
+                bullets.add(Bullet(playerX + 25f, playerY - playerSize, bulletSpeed, 0f, bulletRadius, bulletDamage, bulletColor))
             }
             3 -> {
-                bullets.add(Bullet(playerX, playerY - playerSize, bulletSpeed))
-                bullets.add(Bullet(playerX - 30f, playerY - playerSize, bulletSpeed, -5f))
-                bullets.add(Bullet(playerX + 30f, playerY - playerSize, bulletSpeed, 5f))
+                bullets.add(Bullet(playerX, playerY - playerSize, bulletSpeed, 0f, bulletRadius, bulletDamage, bulletColor))
+                bullets.add(Bullet(playerX - 30f, playerY - playerSize, bulletSpeed, -5f, bulletRadius, bulletDamage, bulletColor))
+                bullets.add(Bullet(playerX + 30f, playerY - playerSize, bulletSpeed, 5f, bulletRadius, bulletDamage, bulletColor))
             }
             else -> {
-                bullets.add(Bullet(playerX, playerY - playerSize, bulletSpeed))
-                bullets.add(Bullet(playerX - 25f, playerY - playerSize, bulletSpeed))
-                bullets.add(Bullet(playerX + 25f, playerY - playerSize, bulletSpeed))
-                bullets.add(Bullet(playerX - 50f, playerY - playerSize, bulletSpeed, -8f))
-                bullets.add(Bullet(playerX + 50f, playerY - playerSize, bulletSpeed, 8f))
+                bullets.add(Bullet(playerX, playerY - playerSize, bulletSpeed, 0f, bulletRadius, bulletDamage, bulletColor))
+                bullets.add(Bullet(playerX - 25f, playerY - playerSize, bulletSpeed, 0f, bulletRadius, bulletDamage, bulletColor))
+                bullets.add(Bullet(playerX + 25f, playerY - playerSize, bulletSpeed, 0f, bulletRadius, bulletDamage, bulletColor))
+                bullets.add(Bullet(playerX - 50f, playerY - playerSize, bulletSpeed, -8f, bulletRadius, bulletDamage, bulletColor))
+                bullets.add(Bullet(playerX + 50f, playerY - playerSize, bulletSpeed, 8f, bulletRadius, bulletDamage, bulletColor))
             }
         }
     }
@@ -947,7 +963,7 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback 
                                 val barrelW = 8f * scale
                                 val barrelH = 36f * scale
                                 val barrelRectF = RectF(playerX - barrelW/2, turretCenterY - barrelH, playerX + barrelW/2, turretCenterY)
-                                canvas.drawBitmap(barrelBmp, android.graphics.Rect(0, 1, barrelBmp.width, 10), barrelRectF, paint)
+                                canvas.drawBitmap(barrelBmp, null, barrelRectF, paint)
 
                                 // Draw turret (centered, overlaying the barrel base)
                                 val turretW = 26f * scale
@@ -1271,7 +1287,10 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback 
             canvas.rotate(35f)
             paint.alpha = 60
             val size = playerSize * 1.2f
-            val rect = RectF(-size/2, -size/2, size/2, size/2)
+            val aspect = bmpDefault.height.toFloat() / bmpDefault.width.toFloat()
+            val w = size
+            val h = size * aspect
+            val rect = RectF(-w/2, -h/2, w/2, h/2)
             canvas.drawBitmap(bmpDefault, null, rect, paint)
             canvas.restore()
         }
@@ -1286,8 +1305,11 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback 
             val size = playerSize * 1.2f
             val frameW = bmpDesert.width / 4
             val frameH = bmpDesert.height
+            val aspect = frameH.toFloat() / frameW.toFloat()
+            val w = size
+            val h = size * aspect
             val srcRect = android.graphics.Rect(0, 0, frameW, frameH)
-            val rect = RectF(-size/2, -size/2, size/2, size/2)
+            val rect = RectF(-w/2, -h/2, w/2, h/2)
             canvas.drawBitmap(bmpDesert, srcRect, rect, paint)
             canvas.restore()
         }
@@ -1299,7 +1321,10 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback 
             canvas.translate(width / 2f, height * 0.50f)
             paint.alpha = 40
             val size = playerSize * 1.5f
-            val rect = RectF(-size/2, -size/2, size/2, size/2)
+            val aspect = bmpHeavy.height.toFloat() / bmpHeavy.width.toFloat()
+            val w = size
+            val h = size * aspect
+            val rect = RectF(-w/2, -h/2, w/2, h/2)
             canvas.drawBitmap(bmpHeavy, null, rect, paint)
             canvas.restore()
         }
@@ -1353,13 +1378,20 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback 
         val startY = height * 0.55f
         startButtonRect.set(btnX - btnWidth/2, startY - btnHeight/2, btnX + btnWidth/2, startY + btnHeight/2)
 
-        applyTitleButtonPulse(canvas, startButtonRect)
-        
-        // Draw fill gradient
-        paint.shader = startButtonGradient
-        paint.style = Paint.Style.FILL
-        canvas.drawRoundRect(startButtonRect, 25f, 25f, paint)
-        paint.shader = null
+        if (isSoundLoaded) {
+            applyTitleButtonPulse(canvas, startButtonRect)
+            
+            // Draw fill gradient
+            paint.shader = startButtonGradient
+            paint.style = Paint.Style.FILL
+            canvas.drawRoundRect(startButtonRect, 25f, 25f, paint)
+            paint.shader = null
+        } else {
+            // Draw disabled grey button
+            paint.color = Color.rgb(100, 100, 100)
+            paint.style = Paint.Style.FILL
+            canvas.drawRoundRect(startButtonRect, 25f, 25f, paint)
+        }
         
         // Draw bevel outline
         paint.color = Color.argb(120, 255, 255, 255)
@@ -1374,9 +1406,12 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback 
         paint.isFakeBoldText = true
         paint.typeface = Typeface.create(Typeface.SANS_SERIF, Typeface.BOLD)
         var textY = startButtonRect.centerY() - (paint.descent() + paint.ascent()) / 2f
-        canvas.drawText("START", btnX, textY, paint)
+        val startText = if (isSoundLoaded) "START" else "LOADING..."
+        canvas.drawText(startText, btnX, textY, paint)
         
-        canvas.restore()
+        if (isSoundLoaded) {
+            canvas.restore()
+        }
 
         // 2. SKIN Button
         val skinY = height * 0.65f
@@ -1461,17 +1496,17 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback 
         // 1. DEFAULT Skin Card
         val defaultY = height * 0.32f
         defaultSkinRect.set(cardX - cardWidth/2, defaultY - cardHeight/2, cardX + cardWidth/2, defaultY + cardHeight/2)
-        drawSkinCard(canvas, defaultSkinRect, "DEFAULT", "Balanced", Color.GREEN, Color.rgb(50, 100, 50))
+        drawSkinCard(canvas, defaultSkinRect, "DEFAULT", "Balanced: HP 3 / Normal Speed", Color.GREEN, Color.rgb(50, 100, 50))
 
         // 2. DESERT Skin Card
         val desertY = height * 0.50f
         desertSkinRect.set(cardX - cardWidth/2, desertY - cardHeight/2, cardX + cardWidth/2, desertY + cardHeight/2)
-        drawSkinCard(canvas, desertSkinRect, "DESERT", "Desert Type", Color.rgb(210, 180, 100), Color.rgb(120, 90, 50))
+        drawSkinCard(canvas, desertSkinRect, "DESERT", "Mobility: HP 2 / Fast Speed / Rapid Fire", Color.rgb(210, 180, 100), Color.rgb(120, 90, 50))
 
         // 3. HEAVY Skin Card
         val heavyY = height * 0.68f
         heavySkinRect.set(cardX - cardWidth/2, heavyY - cardHeight/2, cardX + cardWidth/2, heavyY + cardHeight/2)
-        drawSkinCard(canvas, heavySkinRect, "HEAVY", "Heavy Armor", Color.rgb(70, 80, 70), Color.rgb(40, 50, 40))
+        drawSkinCard(canvas, heavySkinRect, "HEAVY", "Heavy Tank: HP 5 / Slow Speed / 2x Dmg", Color.rgb(70, 80, 70), Color.rgb(40, 50, 40))
 
         // BACK Button
         val backWidth = 400f
@@ -1584,7 +1619,7 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback 
                         val barrelW = 8f * scale
                         val barrelH = 36f * scale
                         val barrelRectF = RectF(previewX - barrelW/2, turretCenterY - barrelH, previewX + barrelW/2, turretCenterY)
-                        canvas.drawBitmap(barrelBmp, android.graphics.Rect(0, 1, barrelBmp.width, 10), barrelRectF, paint)
+                        canvas.drawBitmap(barrelBmp, null, barrelRectF, paint)
 
                         // Draw turret (centered, overlaying the barrel base)
                         val turretW = 26f * scale
@@ -1773,18 +1808,70 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback 
     }
 
     private fun drawPausedScreen(canvas: Canvas) {
-        paint.color = Color.argb(180, 0, 0, 0)
+        paint.color = Color.argb(200, 15, 17, 22)
         canvas.drawRect(0f, 0f, width.toFloat(), height.toFloat(), paint)
+
+        val cx = width / 2f
+        val cy = height / 2f
+
+        // Draw "PAUSED" Title
         paint.textAlign = Paint.Align.CENTER
         paint.color = Color.WHITE
         paint.textSize = 120f
         paint.isFakeBoldText = true
         paint.typeface = Typeface.create(Typeface.SANS_SERIF, Typeface.BOLD)
-        canvas.drawText("PAUSED", Math.round(width / 2f).toFloat(), Math.round(height / 2f - 50f).toFloat(), paint)
-        paint.textSize = 50f
-        paint.isFakeBoldText = false
-        paint.typeface = Typeface.create(Typeface.SANS_SERIF, Typeface.NORMAL)
-        canvas.drawText("Touch to Resume", Math.round(width / 2f).toFloat(), Math.round(height / 2f + 50f).toFloat(), paint)
+        canvas.drawText("PAUSED", cx, cy - 180f, paint)
+
+        val btnW = 400f
+        val btnH = 110f
+
+        // 1. Resume Button
+        resumeBtnRect.set(cx - btnW / 2, cy - 40f, cx + btnW / 2, cy + 70f)
+        val resumeScaled = applyButtonScale(canvas, resumeBtnRect)
+        
+        paint.color = Color.argb(180, 20, 22, 28)
+        paint.style = Paint.Style.FILL
+        canvas.drawRoundRect(resumeBtnRect, 20f, 20f, paint)
+        
+        paint.color = Color.rgb(46, 204, 113) // Green border
+        paint.style = Paint.Style.STROKE
+        paint.strokeWidth = 5f
+        canvas.drawRoundRect(resumeBtnRect, 20f, 20f, paint)
+        paint.style = Paint.Style.FILL
+
+        paint.color = Color.WHITE
+        paint.textSize = 45f
+        paint.isFakeBoldText = true
+        var textY = resumeBtnRect.centerY() - (paint.descent() + paint.ascent()) / 2f
+        canvas.drawText("RESUME", cx, textY, paint)
+
+        if (resumeScaled) {
+            canvas.restore()
+        }
+
+        // 2. Quit Button
+        quitBtnRect.set(cx - btnW / 2, cy + 110f, cx + btnW / 2, cy + 220f)
+        val quitScaled = applyButtonScale(canvas, quitBtnRect)
+        
+        paint.color = Color.argb(180, 20, 22, 28)
+        paint.style = Paint.Style.FILL
+        canvas.drawRoundRect(quitBtnRect, 20f, 20f, paint)
+        
+        paint.color = Color.rgb(231, 76, 60) // Red border
+        paint.style = Paint.Style.STROKE
+        paint.strokeWidth = 5f
+        canvas.drawRoundRect(quitBtnRect, 20f, 20f, paint)
+        paint.style = Paint.Style.FILL
+
+        paint.color = Color.WHITE
+        paint.textSize = 45f
+        paint.isFakeBoldText = true
+        textY = quitBtnRect.centerY() - (paint.descent() + paint.ascent()) / 2f
+        canvas.drawText("QUIT GAME", cx, textY, paint)
+
+        if (quitScaled) {
+            canvas.restore()
+        }
     }
 
     override fun onTouchEvent(event: MotionEvent): Boolean {
@@ -1820,6 +1907,10 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback 
                                 targetPlayerY = y - 150f
                             }
                         }
+                        GameState.PAUSED -> {
+                            if (resumeBtnRect.contains(x, y)) pressedRect = resumeBtnRect
+                            else if (quitBtnRect.contains(x, y)) pressedRect = quitBtnRect
+                        }
                         else -> {}
                     }
                 }
@@ -1839,14 +1930,31 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback 
                     if (rect != null && rect.contains(x, y)) {
                         when (gameState) {
                             GameState.TITLE -> {
-                                if (rect == startButtonRect) restartGame()
+                                if (rect == startButtonRect) {
+                                    if (isSoundLoaded) {
+                                        restartGame()
+                                    } else {
+                                        post {
+                                            android.widget.Toast.makeText(context, "Audio assets are loading. Please wait...", android.widget.Toast.LENGTH_SHORT).show()
+                                        }
+                                    }
+                                }
                                 else if (rect == skinButtonRect) gameState = GameState.SKIN_SELECT
                                 else if (rect == titleSkillButtonRect) gameState = GameState.SKILL_SELECT
                             }
                             GameState.SKIN_SELECT -> {
-                                if (rect == defaultSkinRect) selectedSkinName = "DEFAULT"
-                                else if (rect == desertSkinRect) selectedSkinName = "DESERT"
-                                else if (rect == heavySkinRect) selectedSkinName = "HEAVY"
+                                if (rect == defaultSkinRect) {
+                                    selectedSkinName = "DEFAULT"
+                                    applySkinStats()
+                                }
+                                else if (rect == desertSkinRect) {
+                                    selectedSkinName = "DESERT"
+                                    applySkinStats()
+                                }
+                                else if (rect == heavySkinRect) {
+                                    selectedSkinName = "HEAVY"
+                                    applySkinStats()
+                                }
                                 else if (rect == skinBackButtonRect) gameState = GameState.TITLE
                             }
                             GameState.SKILL_SELECT -> {
@@ -1876,12 +1984,20 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback 
                                     }
                                 }
                             }
+                            GameState.PAUSED -> {
+                                if (rect == resumeBtnRect) {
+                                    gameState = GameState.PLAYING
+                                } else if (rect == quitBtnRect) {
+                                    gameState = GameState.TITLE
+                                    stopBgm()
+                                    playBgm(R.raw.lobby)
+                                }
+                            }
                             else -> {}
                         }
                     } else {
                         if (rect == null) {
                             when (gameState) {
-                                GameState.PAUSED -> gameState = GameState.PLAYING
                                 GameState.STAGE_CLEAR -> startNextStage()
                                 GameState.GAME_OVER, GameState.FINAL_CLEAR -> gameState = GameState.TITLE
                                 else -> {}
@@ -1895,6 +2011,7 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback 
     }
 
     private fun restartGame() {
+        applySkinStats()
         playerHp = maxHp
         score = 0
         weaponLevel = 1
@@ -1917,6 +2034,7 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback 
     }
 
     private fun resetStageState() {
+        applySkinStats()
         gameState = GameState.PLAYING
         stageProgress = 0f
         stageElapsedTimeMs = 0L
@@ -1937,6 +2055,41 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback 
         bossBullets.clear()
         boss = null
         treadMarks.clear()
+    }
+
+    private fun applySkinStats() {
+        when (selectedSkinName) {
+            "DESERT" -> {
+                playerSize = 85f
+                maxHp = 2
+                playerSpeedLerp = 0.55f
+                fireDelay = 220L
+                bulletSpeed = 32f
+                bulletRadius = 8f
+                bulletDamage = 1
+                bulletColor = Color.YELLOW
+            }
+            "HEAVY" -> {
+                playerSize = 120f
+                maxHp = 5
+                playerSpeedLerp = 0.25f
+                fireDelay = 450L
+                bulletSpeed = 18f
+                bulletRadius = 16f
+                bulletDamage = 2
+                bulletColor = Color.rgb(255, 69, 0)
+            }
+            else -> { // DEFAULT
+                playerSize = 100f
+                maxHp = 3
+                playerSpeedLerp = 0.4f
+                fireDelay = 300L
+                bulletSpeed = 25f
+                bulletRadius = 10f
+                bulletDamage = 1
+                bulletColor = Color.RED
+            }
+        }
     }
 
     private fun loadBestScore() {

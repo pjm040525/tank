@@ -5,12 +5,19 @@ import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.RectF
 
-class Bullet(var x: Float, var y: Float, private val speed: Float, private val vx: Float = 0f) {
-    private val radius = 10f
+class Bullet(
+    var x: Float,
+    var y: Float,
+    private val speed: Float,
+    private val vx: Float = 0f,
+    val radius: Float = 10f,
+    val damage: Int = 1,
+    private val color: Int = Color.RED
+) {
     var isActive = true
 
     private val paint = Paint().apply {
-        color = Color.RED
+        color = this@Bullet.color
         style = Paint.Style.FILL
         isAntiAlias = true
         isFilterBitmap = true
