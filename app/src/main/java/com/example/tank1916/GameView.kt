@@ -411,7 +411,7 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback 
         // 2. Deal limited damage to boss
         val b = boss
         if (b != null && b.isActive) {
-            val dmg = if (currentStage == 1) 10 else 12
+            val dmg = if (currentStage % 2 == 1) 10 else 12
             b.takeDamage(dmg)
             effects.add(Effect(b.x, b.y, EffectType.EXPLOSION))
             if (!b.isActive) {
@@ -419,7 +419,7 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback 
                 for (i in 0..10) {
                     effects.add(Effect(b.x + random.nextInt(200) - 100f, b.y + random.nextInt(200) - 100f, EffectType.EXPLOSION))
                 }
-                gameState = if (currentStage == 2) GameState.FINAL_CLEAR else GameState.STAGE_CLEAR
+                gameState = GameState.STAGE_CLEAR
                 boss = null
             }
         }
@@ -506,13 +506,13 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback 
             GameState.PLAYING -> {
                 val b = boss
                 if (b != null && b.isActive) {
-                    if (currentStage == 1) {
+                    if (currentStage % 2 == 1) {
                         playBgm(R.raw.r1boss)
                     } else {
                         playBgm(R.raw.r2boss)
                     }
                 } else {
-                    if (currentStage == 1) {
+                    if (currentStage % 2 == 1) {
                         playBgm(R.raw.round1)
                     } else {
                         playBgm(R.raw.round2)
@@ -582,7 +582,7 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback 
         playerY = Math.max(playerSize, Math.min(height - playerSize/2, playerY))
 
         bgOffsetY += scrollSpeed
-        val maxBgOffset = if (currentStage == 1) 200f else 400f
+        val maxBgOffset = if (currentStage % 2 == 1) 200f else 400f
         if (bgOffsetY > maxBgOffset) {
             bgOffsetY -= maxBgOffset
         }
@@ -626,7 +626,7 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback 
                 for (i in 0..10) {
                     effects.add(Effect(b.x + random.nextInt(200) - 100f, b.y + random.nextInt(200) - 100f, EffectType.EXPLOSION))
                 }
-                gameState = if (currentStage == 2) GameState.FINAL_CLEAR else GameState.STAGE_CLEAR
+                gameState = GameState.STAGE_CLEAR
                 boss = null
             }
         }
@@ -757,14 +757,24 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback 
         }
         when (type) {
             ItemType.POWER -> {
-                weaponLevel++
-                if (weaponLevel > 5) weaponLevel = 5
-                effects.add(Effect(playerX, playerY - 50f, EffectType.PICKUP_TEXT, "+POWER"))
+                if (weaponLevel >= 5) {
+                    score += 500
+                    effects.add(Effect(playerX, playerY - 50f, EffectType.PICKUP_TEXT, "+500 (MAX)"))
+                } else {
+                    weaponLevel++
+                    if (weaponLevel > 5) weaponLevel = 5
+                    effects.add(Effect(playerX, playerY - 50f, EffectType.PICKUP_TEXT, "+POWER"))
+                }
             }
             ItemType.HEAL -> {
-                playerHp++
-                if (playerHp > maxHp) playerHp = maxHp
-                effects.add(Effect(playerX, playerY - 50f, EffectType.PICKUP_TEXT, "+HP"))
+                if (playerHp >= maxHp) {
+                    score += 500
+                    effects.add(Effect(playerX, playerY - 50f, EffectType.PICKUP_TEXT, "+500 (MAX)"))
+                } else {
+                    playerHp++
+                    if (playerHp > maxHp) playerHp = maxHp
+                    effects.add(Effect(playerX, playerY - 50f, EffectType.PICKUP_TEXT, "+HP"))
+                }
             }
         }
     }
@@ -773,7 +783,7 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback 
         val screenWidth = width.toFloat()
         val laneCount = 5
         val laneWidth = screenWidth / laneCount
-        val patternType = if (currentStage == 1) {
+        val patternType = if (currentStage % 2 == 1) {
             when {
                 stageProgress < 30f -> random.nextInt(3)
                 stageProgress < 70f -> random.nextInt(6)
@@ -863,7 +873,7 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback 
             canvas.translate(rx, ry)
         }
 
-        if (currentStage == 1) {
+        if (currentStage % 2 == 1) {
             canvas.drawColor(Color.DKGRAY)
             paint.color = Color.YELLOW; paint.strokeWidth = 15f
             var startY = bgOffsetY - 200f; val centerX = width / 2f
@@ -1235,12 +1245,12 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback 
         paint.textAlign = Paint.Align.CENTER; paint.color = Color.GREEN; paint.textSize = 120f
         paint.isFakeBoldText = true
         paint.typeface = Typeface.create(Typeface.SANS_SERIF, Typeface.BOLD)
-        val clearText = if (currentStage == 2) "FINAL CLEAR!" else "STAGE CLEAR!"
+        val clearText = "STAGE $currentStage CLEAR!"
         canvas.drawText(clearText, Math.round(width / 2f).toFloat(), Math.round(height / 2f - 50f).toFloat(), paint)
         paint.color = Color.WHITE; paint.textSize = 80f
         canvas.drawText("Score: $score", Math.round(width / 2f).toFloat(), Math.round(height / 2f + 80f).toFloat(), paint)
         paint.textSize = 50f
-        val nextText = if (currentStage == 2) "Touch to Restart" else "Touch to Next Stage"
+        val nextText = "Touch to Next Stage"
         paint.isFakeBoldText = false
         paint.typeface = Typeface.create(Typeface.SANS_SERIF, Typeface.NORMAL)
         canvas.drawText(nextText, Math.round(width / 2f).toFloat(), Math.round(height / 2f + 200f).toFloat(), paint)

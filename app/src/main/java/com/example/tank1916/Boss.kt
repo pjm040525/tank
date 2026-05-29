@@ -8,10 +8,10 @@ import android.graphics.RectF
 class Boss(var x: Float, var y: Float, val stage: Int = 1) {
     val width = if (stage == 1) 400f else 500f
     val height = 300f
-    var hp = if (stage == 1) 120 else 250
+    var hp = if (stage == 1) 120 else 250 + (stage - 2) * 100
     val maxHp = hp
     var isActive = true
-    val bossName = if (stage == 1) "IRON FORTRESS" else "DESERT STORM"
+    val bossName = if (stage == 1) "IRON FORTRESS" else "DESERT STORM (Lv.${stage - 1})"
 
     private var state = 0 
     private var moveDir = 1
@@ -71,26 +71,30 @@ class Boss(var x: Float, var y: Float, val stage: Int = 1) {
                     shootTimer = currentTime
                 }
             } else {
-                // --- Stage 2 Attack Patterns (Interval: 800ms, faster & stronger) ---
+                // --- Stage 2+ Attack Patterns (stage가 올라갈수록 더 빨라짐) ---
+                val speedBonus = (stage - 2) * 1.5f
+                val intervalReduction = Math.min(400L, (stage - 2) * 50L) // 최대 400ms 감소
+
                 if (burstCount > 0) {
-                    if (currentTime - lastBurstTime > 150L) {
+                    val burstInterval = Math.max(80L, 150L - (stage - 2) * 5L)
+                    if (currentTime - lastBurstTime > burstInterval) {
                         // Fire a rapid burst of straight bullets
-                        bossBullets.add(BossBullet(x, y + height / 2, 18f, 0f))
-                        bossBullets.add(BossBullet(x - width / 3f, y + height / 2, 18f, 0f))
-                        bossBullets.add(BossBullet(x + width / 3f, y + height / 2, 18f, 0f))
+                        bossBullets.add(BossBullet(x, y + height / 2, 18f + speedBonus, 0f))
+                        bossBullets.add(BossBullet(x - width / 3f, y + height / 2, 18f + speedBonus, 0f))
+                        bossBullets.add(BossBullet(x + width / 3f, y + height / 2, 18f + speedBonus, 0f))
                         burstCount--
                         lastBurstTime = currentTime
                     }
                 } else {
-                    val shootInterval = 800L
+                    val shootInterval = Math.max(300L, 800L - intervalReduction)
                     if (currentTime - shootTimer > shootInterval) {
                         if (attackPatternIndex % 2 == 0) {
                             // Pattern 1: 5-way fan spread
-                            bossBullets.add(BossBullet(x, y + height / 2, 18f, 0f))      // Center
-                            bossBullets.add(BossBullet(x, y + height / 2, 17f, -3.5f))   // Left 1
-                            bossBullets.add(BossBullet(x, y + height / 2, 16f, -7f))     // Left 2
-                            bossBullets.add(BossBullet(x, y + height / 2, 17f, 3.5f))    // Right 1
-                            bossBullets.add(BossBullet(x, y + height / 2, 16f, 7f))     // Right 2
+                            bossBullets.add(BossBullet(x, y + height / 2, 18f + speedBonus, 0f))      // Center
+                            bossBullets.add(BossBullet(x, y + height / 2, 17f + speedBonus, -3.5f))   // Left 1
+                            bossBullets.add(BossBullet(x, y + height / 2, 16f + speedBonus, -7f))     // Left 2
+                            bossBullets.add(BossBullet(x, y + height / 2, 17f + speedBonus, 3.5f))    // Right 1
+                            bossBullets.add(BossBullet(x, y + height / 2, 16f + speedBonus, 7f))     // Right 2
                         } else {
                             // Pattern 2: Trigger 3-shot burst
                             burstCount = 3

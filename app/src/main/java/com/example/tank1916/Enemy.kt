@@ -50,28 +50,42 @@ class Enemy(var x: Float, var y: Float, val type: EnemyType, val stage: Int = 1)
     }
 
     init {
+        val extraHp = if (stage > 2) (stage - 2) / 2 else 0
+        val extraSpeed = if (stage > 2) (stage - 2) * 0.5f else 0f
+
         when (type) {
             EnemyType.BASIC -> {
                 speed = if (stage >= 2) 12f else 8f
                 hp = if (stage >= 2) 2 else 1
-                scoreValue = 100; bodyPaint.color = Color.BLUE
+                speed += extraSpeed
+                hp += extraHp
+                scoreValue = 100 + (stage - 1) * 20
+                bodyPaint.color = Color.BLUE
             }
             EnemyType.FAST -> {
                 speed = if (stage >= 2) 20f else 15f
-                hp = 1
-                scoreValue = 150; bodyPaint.color = Color.CYAN
+                hp = 1 + extraHp
+                speed += extraSpeed
+                scoreValue = 150 + (stage - 1) * 30
+                bodyPaint.color = Color.CYAN
                 width = 80f; height = 80f
             }
             EnemyType.STRONG -> {
                 speed = if (stage >= 2) 7f else 5f
                 hp = if (stage >= 2) 5 else 3
-                scoreValue = 300; bodyPaint.color = Color.rgb(139, 0, 0)
+                speed += extraSpeed
+                hp += extraHp + if (stage > 2) (stage - 2) else 0
+                scoreValue = 300 + (stage - 1) * 50
+                bodyPaint.color = Color.rgb(139, 0, 0)
                 width = 140f; height = 140f
             }
             EnemyType.ZIGZAG -> {
                 speed = if (stage >= 2) 10f else 7f
                 hp = if (stage >= 2) 2 else 1
-                scoreValue = 200; bodyPaint.color = Color.MAGENTA
+                speed += extraSpeed
+                hp += extraHp
+                scoreValue = 200 + (stage - 1) * 40
+                bodyPaint.color = Color.MAGENTA
                 width = 90f; height = 90f
             }
         }
