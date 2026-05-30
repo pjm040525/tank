@@ -530,10 +530,10 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback 
 
     private fun increaseSkillGauge(type: EnemyType) {
         val gain = when (type) {
-            EnemyType.BASIC -> 10
-            EnemyType.FAST -> 12
-            EnemyType.ZIGZAG -> 15
-            EnemyType.STRONG -> 20
+            EnemyType.BASIC -> 4
+            EnemyType.FAST -> 5
+            EnemyType.ZIGZAG -> 7
+            EnemyType.STRONG -> 10
         }
         skillGauge = Math.min(skillGaugeMax, skillGauge + gain)
     }
