@@ -29,6 +29,7 @@ enum class GameState {
 class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback {
 
     private var thread: MainThread? = null
+    private var hasTriggeredInfiniteGo = false
     private val paint = Paint().apply {
         isAntiAlias = true
         isFilterBitmap = true
@@ -463,6 +464,31 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback 
 
     private fun playBgm(resId: Int) {
         if (currentBgmResId == resId) return
+
+        if (resId == R.raw.infinity_castl && !hasTriggeredInfiniteGo) {
+            hasTriggeredInfiniteGo = true
+            currentBgmResId = R.raw.infinite_go
+            try {
+                bgmPlayer?.stop()
+                bgmPlayer?.release()
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+            try {
+                bgmPlayer = MediaPlayer.create(context, R.raw.infinite_go).apply {
+                    isLooping = false
+                    setOnCompletionListener {
+                        currentBgmResId = 0
+                        playBgm(R.raw.infinity_castl)
+                    }
+                    start()
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+            return
+        }
+
         try {
             bgmPlayer?.stop()
             bgmPlayer?.release()
@@ -512,10 +538,14 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback 
                         playBgm(R.raw.r2boss)
                     }
                 } else {
-                    if (currentStage % 2 == 1) {
-                        playBgm(R.raw.round1)
+                    if (currentStage >= 3) {
+                        playBgm(R.raw.infinity_castl)
                     } else {
-                        playBgm(R.raw.round2)
+                        if (currentStage % 2 == 1) {
+                            playBgm(R.raw.round1)
+                        } else {
+                            playBgm(R.raw.round2)
+                        }
                     }
                 }
             }
@@ -2035,6 +2065,7 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback 
         playerY = height - 250f
         targetPlayerX = playerX
         targetPlayerY = playerY
+        hasTriggeredInfiniteGo = false
     }
 
     private fun startNextStage() {
